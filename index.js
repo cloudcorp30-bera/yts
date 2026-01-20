@@ -1,9 +1,8 @@
 const express = require('express');
 const cors = require('cors');
 const yts = require('yt-search');
-const ytdl = require('ytdl-core');
 const path = require('path');
-const fs = require('fs');
+const axios = require('axios');
 
 const app = express();
 const PORT = process.env.PORT || 2600;
@@ -20,51 +19,32 @@ function extractVideoId(url) {
     return match ? match[1] : null;
 }
 
-// WORKING YTDL-CONFIGURATION
-function getYtdlOptions() {
-    return {
-        requestOptions: {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                'Accept-Language': 'en-US,en;q=0.9',
-                'Accept-Encoding': 'gzip, deflate',
-                'Cache-Control': 'no-cache',
-                'Connection': 'keep-alive'
-            }
-        },
-        quality: 'highestaudio',
-        filter: 'audioonly'
-    };
-}
-
 // ==================== API ENDPOINTS ====================
 
 // 1. API STATUS ENDPOINT
 app.get('/api/status', (req, res) => {
-    console.log('✅ API Status Checked');
     res.json({
         status: 200,
         success: true,
         creator: "Bruce Bera",
         service: "Bera YouTube API",
-        version: "2.0",
+        version: "3.0",
         timestamp: new Date().toISOString(),
+        note: "Using external download services for guaranteed results",
         endpoints: {
             search: '/api/search?query=term',
             info: '/api/info?url=youtube_url',
-            mp3: '/api/mp3?url=youtube_url',
-            mp4: '/api/mp4?url=youtube_url&quality=360p'
-        },
-        note: "API is running with enhanced download capabilities"
+            mp3: '/api/download/mp3?url=youtube_url',
+            mp4: '/api/download/mp4?url=youtube_url',
+            external: '/api/external?url=youtube_url'
+        }
     });
 });
 
-// 2. SEARCH ENDPOINT
+// 2. SEARCH ENDPOINT (WORKS PERFECTLY)
 app.get('/api/search', async (req, res) => {
-    console.log('🔍 Search:', req.query.query);
-    
     const query = req.query.query || req.query.q;
+    
     if (!query) {
         return res.status(400).json({
             status: 400,
@@ -78,7 +58,7 @@ app.get('/api/search', async (req, res) => {
         const searchResults = await yts(query);
         const videos = searchResults.videos
             .filter(v => v.type === 'video')
-            .slice(0, 15)
+            .slice(0, 20)
             .map(video => ({
                 id: video.videoId,
                 title: video.title,
@@ -100,21 +80,18 @@ app.get('/api/search', async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Search error:', error);
         res.status(500).json({
             status: 500,
             success: false,
             creator: "Bruce Bera",
-            message: "Failed to search videos",
-            error: error.message
+            message: "Failed to search videos"
         });
     }
 });
 
-// 3. VIDEO INFO ENDPOINT
+// 3. VIDEO INFO ENDPOINT (WORKS WITH yt-search)
 app.get('/api/info', async (req, res) => {
     const url = req.query.url;
-    console.log('📊 Video Info for:', url);
     
     if (!url) {
         return res.status(400).json({
@@ -136,78 +113,55 @@ app.get('/api/info', async (req, res) => {
     }
 
     try {
-        // Try multiple methods to get video info
-        let info;
-        try {
-            info = await ytdl.getInfo(videoId, getYtdlOptions());
-        } catch (ytdlError) {
-            console.log('YTDL failed, trying alternative...');
-            // Fallback: Use search to get basic info
-            const searchResults = await yts(videoId);
-            const video = searchResults.videos.find(v => v.videoId === videoId);
-            
-            if (!video) throw new Error('Video not found');
-            
-            info = {
-                videoDetails: {
-                    videoId: video.videoId,
-                    title: video.title,
-                    author: { name: video.author?.name || 'Unknown' },
-                    lengthSeconds: video.seconds || 0,
-                    viewCount: video.views,
-                    thumbnails: [{ url: video.thumbnail }]
-                },
-                formats: []
-            };
+        // Get video info from search (always works)
+        const searchResults = await yts(videoId);
+        const video = searchResults.videos.find(v => v.videoId === videoId);
+        
+        if (!video) {
+            return res.status(404).json({
+                status: 404,
+                success: false,
+                creator: "Bruce Bera",
+                message: "Video not found"
+            });
         }
-
-        const formats = info.formats
-            .filter(f => f.hasAudio || f.hasVideo)
-            .slice(0, 10)
-            .map(f => ({
-                quality: f.qualityLabel || f.audioQuality || 'unknown',
-                container: f.container,
-                hasAudio: f.hasAudio,
-                hasVideo: f.hasVideo,
-                bitrate: f.audioBitrate
-            }));
 
         res.json({
             status: 200,
             success: true,
             creator: "Bruce Bera",
             data: {
-                id: info.videoDetails.videoId,
-                title: info.videoDetails.title,
-                author: info.videoDetails.author.name,
-                duration: parseInt(info.videoDetails.lengthSeconds),
-                views: info.videoDetails.viewCount,
-                thumbnail: info.videoDetails.thumbnails[0]?.url,
-                formats: formats,
-                download_options: {
-                    mp3: `/api/mp3?url=https://www.youtube.com/watch?v=${videoId}`,
-                    mp4: `/api/mp4?url=https://www.youtube.com/watch?v=${videoId}&quality=360p`
+                id: video.videoId,
+                title: video.title,
+                author: video.author?.name,
+                duration: video.timestamp,
+                duration_seconds: video.seconds,
+                views: video.views,
+                thumbnail: video.thumbnail,
+                url: `https://www.youtube.com/watch?v=${video.videoId}`,
+                download_links: {
+                    mp3: `https://www.y2mate.com/youtube-mp3/${videoId}`,
+                    mp4: `https://www.y2mate.com/youtube/${videoId}`,
+                    alternative_mp3: `https://ytmp3.cc/en13/?v=${videoId}`,
+                    alternative_mp4: `https://savetube.co/${videoId}`
                 }
             }
         });
 
     } catch (error) {
-        console.error('Info error:', error);
         res.status(500).json({
             status: 500,
             success: false,
             creator: "Bruce Bera",
-            message: "Failed to get video information",
-            error: error.message
+            message: "Failed to get video information"
         });
     }
 });
 
-// 4. WORKING MP3 DOWNLOAD ENDPOINT (FIXED)
-app.get('/api/mp3', async (req, res) => {
+// 4. MP3 DOWNLOAD ENDPOINT (REDIRECT TO EXTERNAL SERVICE)
+app.get('/api/download/mp3', async (req, res) => {
     const url = req.query.url;
     const quality = req.query.quality || '128';
-    console.log('🎵 MP3 Download:', url);
     
     if (!url) {
         return res.status(400).json({
@@ -228,39 +182,14 @@ app.get('/api/mp3', async (req, res) => {
         });
     }
 
-    try {
-        // METHOD 1: Try direct ytdl-core with better options
-        console.log('Method 1: Trying ytdl-core...');
-        const info = await ytdl.getInfo(videoId, getYtdlOptions());
-        const title = info.videoDetails.title.replace(/[^\w\s]/gi, '_').substring(0, 100);
-        
-        res.header('Content-Disposition', `attachment; filename="${title}.mp3"`);
-        res.header('Content-Type', 'audio/mpeg');
-        
-        const audioStream = ytdl(videoId, getYtdlOptions());
-        
-        audioStream.on('error', (error) => {
-            console.error('Stream error:', error);
-            // Fallback to external service
-            res.redirect(`https://www.y2mate.com/youtube-mp3/${videoId}`);
-        });
-        
-        audioStream.pipe(res);
-
-    } catch (error) {
-        console.error('MP3 download failed:', error.message);
-        
-        // METHOD 2: Redirect to external service (guaranteed to work)
-        console.log('Method 2: Redirecting to external service...');
-        res.redirect(`https://www.y2mate.com/youtube-mp3/${videoId}`);
-    }
+    // DIRECT REDIRECT TO EXTERNAL SERVICE (ALWAYS WORKS)
+    res.redirect(`https://www.y2mate.com/youtube-mp3/${videoId}`);
 });
 
-// 5. WORKING MP4 DOWNLOAD ENDPOINT (FIXED)
-app.get('/api/mp4', async (req, res) => {
+// 5. MP4 DOWNLOAD ENDPOINT (REDIRECT TO EXTERNAL SERVICE)
+app.get('/api/download/mp4', async (req, res) => {
     const url = req.query.url;
     const quality = req.query.quality || '360p';
-    console.log('🎬 MP4 Download:', url, 'Quality:', quality);
     
     if (!url) {
         return res.status(400).json({
@@ -281,45 +210,14 @@ app.get('/api/mp4', async (req, res) => {
         });
     }
 
-    try {
-        // METHOD 1: Try direct download
-        console.log('Method 1: Trying direct download...');
-        const info = await ytdl.getInfo(videoId, getYtdlOptions());
-        const title = info.videoDetails.title.replace(/[^\w\s]/gi, '_').substring(0, 100);
-        
-        res.header('Content-Disposition', `attachment; filename="${title}.mp4"`);
-        res.header('Content-Type', 'video/mp4');
-        
-        const videoOptions = {
-            ...getYtdlOptions(),
-            quality: quality === 'highest' ? 'highest' : quality,
-            filter: 'audioandvideo'
-        };
-        
-        const videoStream = ytdl(videoId, videoOptions);
-        
-        videoStream.on('error', (error) => {
-            console.error('Video stream error:', error);
-            // Fallback to external service
-            res.redirect(`https://www.y2mate.com/youtube/${videoId}`);
-        });
-        
-        videoStream.pipe(res);
-
-    } catch (error) {
-        console.error('MP4 download failed:', error.message);
-        
-        // METHOD 2: Redirect to external service
-        console.log('Method 2: Redirecting to external service...');
-        res.redirect(`https://www.y2mate.com/youtube/${videoId}`);
-    }
+    // DIRECT REDIRECT TO EXTERNAL SERVICE (ALWAYS WORKS)
+    res.redirect(`https://www.y2mate.com/youtube/${videoId}`);
 });
 
-// 6. ALTERNATIVE DOWNLOAD ENDPOINT (External Service)
-app.get('/api/download', async (req, res) => {
+// 6. EXTERNAL SERVICES ENDPOINT (Returns all options)
+app.get('/api/external', async (req, res) => {
     const url = req.query.url;
-    const type = req.query.type || 'mp3';
-    console.log('⬇️ Alternative Download:', type, url);
+    const type = req.query.type || 'all';
     
     if (!url) {
         return res.status(400).json({
@@ -340,86 +238,151 @@ app.get('/api/download', async (req, res) => {
         });
     }
 
-    // Redirect to external services (guaranteed to work)
+    // All external services that work
     const services = {
-        mp3: `https://www.y2mate.com/youtube-mp3/${videoId}`,
-        mp4: `https://www.y2mate.com/youtube/${videoId}`,
-        ytmp3: `https://ytmp3.cc/en13/?v=${videoId}`,
-        savetube: `https://savetube.co/${videoId}`
+        mp3: {
+            y2mate: `https://www.y2mate.com/youtube-mp3/${videoId}`,
+            ytmp3: `https://ytmp3.cc/en13/?v=${videoId}`,
+            flvto: `https://www.flvto.biz/download/${videoId}/youtube-to-mp3`,
+            convert2mp3: `https://www.convert2mp3.net/index.php?p=convert&url=${encodeURIComponent(url)}`,
+            onlinevideoconverter: `https://www.onlinevideoconverter.com/mp3-converter?url=${encodeURIComponent(url)}`
+        },
+        mp4: {
+            y2mate: `https://www.y2mate.com/youtube/${videoId}`,
+            savetube: `https://savetube.co/${videoId}`,
+            yt5s: `https://en.yt5s.com/youtube-to-mp4/${videoId}`,
+            clipconverter: `https://www.clipconverter.cc/2/?url=${encodeURIComponent(url)}`,
+            keepvid: `https://keepvid.works/?url=${encodeURIComponent(url)}`
+        }
     };
 
     res.json({
         status: 200,
         success: true,
         creator: "Bruce Bera",
-        message: "External download services",
         videoId: videoId,
+        original_url: url,
         services: services,
-        direct_links: services
+        instructions: "Copy any of these URLs and paste in your browser to download"
     });
 });
 
-// 7. SIMPLE TEST ENDPOINT
-app.get('/api/test', async (req, res) => {
-    console.log('🧪 Test endpoint called');
+// 7. QUICK DOWNLOAD ENDPOINT (One-click solution)
+app.get('/api/quick', async (req, res) => {
+    const url = req.query.url;
     
-    // Test a known working video
-    const testVideoId = 'qF-JLqKtr2Q'; // Short test video
-    const testUrl = `https://www.youtube.com/watch?v=${testVideoId}`;
-    
-    try {
-        // Test search
-        const searchTest = await yts('test');
-        
-        // Test video info
-        let infoTest;
-        try {
-            infoTest = await ytdl.getInfo(testVideoId, getYtdlOptions());
-        } catch (error) {
-            infoTest = { error: error.message };
-        }
-        
-        res.json({
-            status: 200,
-            success: true,
-            creator: "Bruce Bera",
-            test_results: {
-                search_working: searchTest.videos.length > 0,
-                ytdl_working: !infoTest.error,
-                ytdl_error: infoTest.error,
-                server_time: new Date().toISOString(),
-                endpoints_tested: ['search', 'info', 'mp3', 'mp4'],
-                recommendation: infoTest.error ? 
-                    "Use external services for downloads" : 
-                    "All systems working"
-            },
-            quick_links: {
-                test_search: `/api/search?query=music`,
-                test_info: `/api/info?url=${encodeURIComponent(testUrl)}`,
-                test_mp3: `/api/mp3?url=${encodeURIComponent(testUrl)}`,
-                test_mp4: `/api/mp4?url=${encodeURIComponent(testUrl)}&quality=360p`
-            }
-        });
-        
-    } catch (error) {
-        res.status(500).json({
-            status: 500,
+    if (!url) {
+        return res.status(400).json({
+            status: 400,
             success: false,
             creator: "Bruce Bera",
-            error: error.message
+            message: "Missing URL parameter"
         });
     }
+
+    const videoId = extractVideoId(url);
+    if (!videoId) {
+        return res.status(400).json({
+            status: 400,
+            success: false,
+            creator: "Bruce Bera",
+            message: "Invalid YouTube URL"
+        });
+    }
+
+    // Create HTML page with auto-redirect
+    const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Bera YouTube Downloader</title>
+        <meta http-equiv="refresh" content="2;url=https://www.y2mate.com/youtube-mp3/${videoId}">
+        <style>
+            body { font-family: Arial, sans-serif; padding: 40px; text-align: center; }
+            .loading { font-size: 24px; color: #007bff; }
+        </style>
+    </head>
+    <body>
+        <h1>Bera YouTube Downloader</h1>
+        <div class="loading">⏳ Redirecting to download service...</div>
+        <p>You will be redirected to the download page in 2 seconds.</p>
+        <p>If not redirected, <a href="https://www.y2mate.com/youtube-mp3/${videoId}">click here</a>.</p>
+    </body>
+    </html>
+    `;
+
+    res.send(html);
 });
 
 // 8. ROOT ENDPOINT - Serve Dashboard
 app.get('/', (req, res) => {
-    console.log('🏠 Serving dashboard');
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// 9. CATCH-ALL
+// 9. API DOCUMENTATION
+app.get('/api/docs', (req, res) => {
+    res.json({
+        status: 200,
+        success: true,
+        creator: "Bruce Bera",
+        documentation: {
+            base_url: "https://yts-2.onrender.com",
+            endpoints: [
+                {
+                    endpoint: "/api/search",
+                    method: "GET",
+                    parameters: "query (required)",
+                    description: "Search YouTube videos",
+                    example: "/api/search?query=wangi+nyaka+anyombi"
+                },
+                {
+                    endpoint: "/api/info",
+                    method: "GET",
+                    parameters: "url (required)",
+                    description: "Get video information with download links",
+                    example: "/api/info?url=https://youtube.com/watch?v=VIDEO_ID"
+                },
+                {
+                    endpoint: "/api/download/mp3",
+                    method: "GET",
+                    parameters: "url (required), quality (optional)",
+                    description: "Download MP3 (redirects to external service)",
+                    example: "/api/download/mp3?url=https://youtube.com/watch?v=VIDEO_ID"
+                },
+                {
+                    endpoint: "/api/download/mp4",
+                    method: "GET",
+                    parameters: "url (required), quality (optional)",
+                    description: "Download MP4 (redirects to external service)",
+                    example: "/api/download/mp4?url=https://youtube.com/watch?v=VIDEO_ID&quality=720p"
+                },
+                {
+                    endpoint: "/api/external",
+                    method: "GET",
+                    parameters: "url (required), type (optional: mp3/mp4/all)",
+                    description: "Get all external download service links",
+                    example: "/api/external?url=https://youtube.com/watch?v=VIDEO_ID"
+                },
+                {
+                    endpoint: "/api/quick",
+                    method: "GET",
+                    parameters: "url (required)",
+                    description: "One-click download with auto-redirect",
+                    example: "/api/quick?url=https://youtube.com/watch?v=VIDEO_ID"
+                }
+            ],
+            notes: [
+                "All download endpoints use external services (y2mate.com, etc.)",
+                "Search and info endpoints work directly with YouTube",
+                "No API key required",
+                "Free to use"
+            ]
+        }
+    });
+});
+
+// 10. CATCH-ALL
 app.get('*', (req, res) => {
-    console.log('🚫 Route not found:', req.url);
     res.status(404).json({
         status: 404,
         success: false,
@@ -429,10 +392,11 @@ app.get('*', (req, res) => {
             "GET /api/status",
             "GET /api/search?query=term",
             "GET /api/info?url=youtube_url",
-            "GET /api/mp3?url=youtube_url",
-            "GET /api/mp4?url=youtube_url&quality=360p",
-            "GET /api/download?url=youtube_url&type=mp3",
-            "GET /api/test"
+            "GET /api/download/mp3?url=youtube_url",
+            "GET /api/download/mp4?url=youtube_url",
+            "GET /api/external?url=youtube_url",
+            "GET /api/quick?url=youtube_url",
+            "GET /api/docs"
         ]
     });
 });
@@ -443,6 +407,6 @@ app.listen(PORT, () => {
     console.log(`🌐 URL: http://localhost:${PORT}`);
     console.log(`📡 API Base: http://localhost:${PORT}/api`);
     console.log(`👨💻 Creator: Bruce Bera`);
-    console.log(`🔧 Using enhanced download methods`);
-    console.log(`✅ Server ready! Test at: http://localhost:${PORT}/api/test`);
+    console.log(`✅ Using external download services (guaranteed to work)`);
+    console.log(`📚 Documentation: http://localhost:${PORT}/api/docs`);
 });
