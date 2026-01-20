@@ -385,168 +385,119 @@
     </div>
 
    <script>
-    // API Configuration
-    const API_BASE_URL = window.location.origin;
+    const API_BASE = window.location.origin;
+    console.log('Bera API Dashboard loaded. Base:', API_BASE);
     
-    // Initialize when page loads
+    // Initialize
     document.addEventListener('DOMContentLoaded', function() {
-        console.log('📱 Bera API Dashboard Loaded');
-        console.log('🌐 API Base URL:', API_BASE_URL);
-        
-        // Test connection immediately
-        testConnection();
-        
-        // Setup button listeners
+        testAPI();
         setupButtons();
     });
     
     // Test API connection
-    async function testConnection() {
+    async function testAPI() {
         try {
-            const response = await fetch(`${API_BASE_URL}/api/status`);
+            const response = await fetch(`${API_BASE}/api/status`);
             const data = await response.json();
-            console.log('✅ API Connection Test:', data);
-            
-            // Show success message
-            if (data.success) {
-                showMessage('success', 'API is connected and ready!');
-            }
+            console.log('✅ API Status:', data);
+            showMessage('success', 'API Connected ✓');
         } catch (error) {
-            console.error('❌ API Connection Failed:', error);
-            showMessage('error', 'Cannot connect to API. Check server logs.');
+            console.error('❌ API Error:', error);
+            showMessage('error', 'API Connection Failed');
         }
     }
     
-    // Setup all button listeners
+    // Setup all buttons
     function setupButtons() {
-        // Search button
-        document.getElementById('searchBtn').addEventListener('click', async () => {
+        // Search
+        document.getElementById('searchBtn').onclick = async () => {
             const query = document.getElementById('searchQuery').value.trim();
-            if (!query) {
-                showMessage('warning', 'Please enter a search query');
-                return;
-            }
+            if (!query) return alert('Enter search query');
             
-            const resultDiv = document.getElementById('searchResult');
-            resultDiv.innerHTML = '<div class="loading">Searching...</div>';
-            
+            document.getElementById('searchResult').innerHTML = 'Searching...';
             try {
-                const response = await fetch(`${API_BASE_URL}/api/search?query=${encodeURIComponent(query)}`);
+                const response = await fetch(`${API_BASE}/api/search?query=${encodeURIComponent(query)}`);
                 const data = await response.json();
-                
-                if (data.success) {
-                    let html = `<h3>Found ${data.count} videos:</h3>`;
-                    data.videos.forEach(video => {
-                        html += `
-                            <div class="video-result">
-                                <img src="${video.thumbnail}" width="120" style="float:left; margin-right:10px;">
-                                <strong>${video.title}</strong><br>
-                                Duration: ${video.duration} | Views: ${video.views}<br>
-                                <button onclick="testVideo('${video.url}')" class="btn-small">Test This Video</button>
-                                <button onclick="downloadMP3Direct('${video.url}')" class="btn-small">Download MP3</button>
-                                <div style="clear:both;"></div>
-                            </div>
-                            <hr>
-                        `;
-                    });
-                    resultDiv.innerHTML = html;
-                } else {
-                    resultDiv.innerHTML = `<div class="error">${data.message}</div>`;
-                }
+                displayResults('searchResult', data);
             } catch (error) {
-                resultDiv.innerHTML = `<div class="error">Search failed: ${error.message}</div>`;
+                document.getElementById('searchResult').innerHTML = `Error: ${error.message}`;
             }
-        });
+        };
         
-        // Info button
-        document.getElementById('infoBtn').addEventListener('click', async () => {
+        // Get Info
+        document.getElementById('infoBtn').onclick = async () => {
             const url = document.getElementById('infoUrl').value.trim();
-            if (!url) {
-                showMessage('warning', 'Please enter a YouTube URL');
-                return;
-            }
+            if (!url) return alert('Enter YouTube URL');
             
-            const resultDiv = document.getElementById('infoResult');
-            resultDiv.innerHTML = '<div class="loading">Getting video info...</div>';
-            
+            document.getElementById('infoResult').innerHTML = 'Loading...';
             try {
-                const response = await fetch(`${API_BASE_URL}/api/info?url=${encodeURIComponent(url)}`);
+                const response = await fetch(`${API_BASE}/api/info?url=${encodeURIComponent(url)}`);
                 const data = await response.json();
-                resultDiv.innerHTML = `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+                displayResults('infoResult', data);
             } catch (error) {
-                resultDiv.innerHTML = `<div class="error">Failed: ${error.message}</div>`;
+                document.getElementById('infoResult').innerHTML = `Error: ${error.message}`;
             }
-        });
+        };
         
-        // MP3 Download button
-        document.getElementById('mp3Btn').addEventListener('click', () => {
+        // Download MP3 (SIMPLIFIED - Opens in new tab)
+        document.getElementById('mp3Btn').onclick = () => {
             const url = document.getElementById('mp3Url').value.trim();
-            const quality = document.getElementById('mp3Quality').value;
+            if (!url) return alert('Enter YouTube URL');
             
-            if (!url) {
-                showMessage('warning', 'Please enter a YouTube URL');
-                return;
-            }
-            
-            // Open download in new tab
-            window.open(`${API_BASE_URL}/api/download/mp3?url=${encodeURIComponent(url)}&quality=${quality}`, '_blank');
-            showMessage('success', 'MP3 download started in new tab');
-        });
+            // Open in new tab - this will either download or redirect to external service
+            window.open(`${API_BASE}/api/mp3?url=${encodeURIComponent(url)}`, '_blank');
+            showMessage('info', 'MP3 download started in new tab');
+        };
         
-        // MP4 Download button
-        document.getElementById('mp4Btn').addEventListener('click', () => {
+        // Download MP4 (SIMPLIFIED - Opens in new tab)
+        document.getElementById('mp4Btn').onclick = () => {
             const url = document.getElementById('mp4Url').value.trim();
             const quality = document.getElementById('mp4Quality').value;
+            if (!url) return alert('Enter YouTube URL');
             
-            if (!url) {
-                showMessage('warning', 'Please enter a YouTube URL');
-                return;
-            }
-            
-            // Open download in new tab
-            window.open(`${API_BASE_URL}/api/download/mp4?url=${encodeURIComponent(url)}&quality=${quality}`, '_blank');
-            showMessage('success', 'MP4 download started in new tab');
-        });
+            // Open in new tab
+            window.open(`${API_BASE}/api/mp4?url=${encodeURIComponent(url)}&quality=${quality}`, '_blank');
+            showMessage('info', 'MP4 download started in new tab');
+        };
         
-        // Status button
-        document.getElementById('statusBtn').addEventListener('click', async () => {
-            const resultDiv = document.getElementById('statusResult');
-            resultDiv.innerHTML = '<div class="loading">Checking API status...</div>';
-            
+        // Status
+        document.getElementById('statusBtn').onclick = async () => {
+            document.getElementById('statusResult').innerHTML = 'Checking...';
             try {
-                const response = await fetch(`${API_BASE_URL}/api/status`);
+                const response = await fetch(`${API_BASE}/api/status`);
                 const data = await response.json();
-                resultDiv.innerHTML = `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+                displayResults('statusResult', data);
             } catch (error) {
-                resultDiv.innerHTML = `<div class="error">Failed: ${error.message}</div>`;
+                document.getElementById('statusResult').innerHTML = `Error: ${error.message}`;
             }
-        });
+        };
     }
     
-    // Helper functions
+    // Display results
+    function displayResults(elementId, data) {
+        const element = document.getElementById(elementId);
+        if (data.success) {
+            element.innerHTML = `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+        } else {
+            element.innerHTML = `<div style="color:red;">Error: ${data.message}</div>`;
+        }
+    }
+    
+    // Show message
     function showMessage(type, text) {
-        const messageDiv = document.createElement('div');
-        messageDiv.className = `message ${type}`;
-        messageDiv.textContent = text;
-        messageDiv.style.cssText = 'padding:10px; margin:10px 0; border-radius:5px;';
-        messageDiv.style.backgroundColor = type === 'success' ? '#d4edda' : type === 'error' ? '#f8d7da' : '#fff3cd';
-        messageDiv.style.color = type === 'success' ? '#155724' : type === 'error' ? '#721c24' : '#856404';
-        messageDiv.style.border = `1px solid ${type === 'success' ? '#c3e6cb' : type === 'error' ? '#f5c6cb' : '#ffeeba'}`;
-        
-        document.querySelector('.content-area').prepend(messageDiv);
-        setTimeout(() => messageDiv.remove(), 5000);
+        const msg = document.createElement('div');
+        msg.style.cssText = `padding:10px; margin:10px; border-radius:5px; 
+                           background:${type==='success'?'#d4edda':type==='error'?'#f8d7da':'#d1ecf1'};
+                           color:${type==='success'?'#155724':type==='error'?'#721c24':'#0c5460'};`;
+        msg.textContent = text;
+        document.querySelector('.content-area').prepend(msg);
+        setTimeout(() => msg.remove(), 3000);
     }
     
-    // Test a specific video
+    // Quick test function
     window.testVideo = function(url) {
         document.getElementById('infoUrl').value = url;
         document.getElementById('infoBtn').click();
-    };
-    
-    // Direct MP3 download
-    window.downloadMP3Direct = function(url) {
-        document.getElementById('mp3Url').value = url;
-        document.getElementById('mp3Btn').click();
     };
 </script>
 </body>
