@@ -383,122 +383,232 @@
             <p>API Documentation | Contact Support | Terms of Service</p>
         </div>
     </div>
-
-   <script>
+<script>
     const API_BASE = window.location.origin;
-    console.log('Bera API Dashboard loaded. Base:', API_BASE);
+    console.log('Bera API Dashboard loaded');
     
     // Initialize
     document.addEventListener('DOMContentLoaded', function() {
-        testAPI();
-        setupButtons();
+        updateEndpointList();
+        showMessage('info', 'Welcome to Bera YouTube API. Search works, downloads use external services.');
     });
-    
-    // Test API connection
-    async function testAPI() {
-        try {
-            const response = await fetch(`${API_BASE}/api/status`);
-            const data = await response.json();
-            console.log('✅ API Status:', data);
-            showMessage('success', 'API Connected ✓');
-        } catch (error) {
-            console.error('❌ API Error:', error);
-            showMessage('error', 'API Connection Failed');
-        }
-    }
-    
-    // Setup all buttons
-    function setupButtons() {
-        // Search
-        document.getElementById('searchBtn').onclick = async () => {
-            const query = document.getElementById('searchQuery').value.trim();
-            if (!query) return alert('Enter search query');
-            
-            document.getElementById('searchResult').innerHTML = 'Searching...';
-            try {
-                const response = await fetch(`${API_BASE}/api/search?query=${encodeURIComponent(query)}`);
-                const data = await response.json();
-                displayResults('searchResult', data);
-            } catch (error) {
-                document.getElementById('searchResult').innerHTML = `Error: ${error.message}`;
-            }
-        };
-        
-        // Get Info
-        document.getElementById('infoBtn').onclick = async () => {
-            const url = document.getElementById('infoUrl').value.trim();
-            if (!url) return alert('Enter YouTube URL');
-            
-            document.getElementById('infoResult').innerHTML = 'Loading...';
-            try {
-                const response = await fetch(`${API_BASE}/api/info?url=${encodeURIComponent(url)}`);
-                const data = await response.json();
-                displayResults('infoResult', data);
-            } catch (error) {
-                document.getElementById('infoResult').innerHTML = `Error: ${error.message}`;
-            }
-        };
-        
-        // Download MP3 (SIMPLIFIED - Opens in new tab)
-        document.getElementById('mp3Btn').onclick = () => {
-            const url = document.getElementById('mp3Url').value.trim();
-            if (!url) return alert('Enter YouTube URL');
-            
-            // Open in new tab - this will either download or redirect to external service
-            window.open(`${API_BASE}/api/mp3?url=${encodeURIComponent(url)}`, '_blank');
-            showMessage('info', 'MP3 download started in new tab');
-        };
-        
-        // Download MP4 (SIMPLIFIED - Opens in new tab)
-        document.getElementById('mp4Btn').onclick = () => {
-            const url = document.getElementById('mp4Url').value.trim();
-            const quality = document.getElementById('mp4Quality').value;
-            if (!url) return alert('Enter YouTube URL');
-            
-            // Open in new tab
-            window.open(`${API_BASE}/api/mp4?url=${encodeURIComponent(url)}&quality=${quality}`, '_blank');
-            showMessage('info', 'MP4 download started in new tab');
-        };
-        
-        // Status
-        document.getElementById('statusBtn').onclick = async () => {
-            document.getElementById('statusResult').innerHTML = 'Checking...';
-            try {
-                const response = await fetch(`${API_BASE}/api/status`);
-                const data = await response.json();
-                displayResults('statusResult', data);
-            } catch (error) {
-                document.getElementById('statusResult').innerHTML = `Error: ${error.message}`;
-            }
-        };
-    }
-    
-    // Display results
-    function displayResults(elementId, data) {
-        const element = document.getElementById(elementId);
-        if (data.success) {
-            element.innerHTML = `<pre>${JSON.stringify(data, null, 2)}</pre>`;
-        } else {
-            element.innerHTML = `<div style="color:red;">Error: ${data.message}</div>`;
-        }
-    }
     
     // Show message
     function showMessage(type, text) {
         const msg = document.createElement('div');
-        msg.style.cssText = `padding:10px; margin:10px; border-radius:5px; 
-                           background:${type==='success'?'#d4edda':type==='error'?'#f8d7da':'#d1ecf1'};
-                           color:${type==='success'?'#155724':type==='error'?'#721c24':'#0c5460'};`;
-        msg.textContent = text;
+        msg.className = `alert alert-${type}`;
+        msg.innerHTML = text;
+        msg.style.cssText = 'padding:10px; margin:10px; border-radius:5px;';
+        msg.style.background = type === 'success' ? '#d4edda' : 
+                              type === 'error' ? '#f8d7da' : 
+                              type === 'warning' ? '#fff3cd' : '#d1ecf1';
+        msg.style.color = type === 'success' ? '#155724' : 
+                         type === 'error' ? '#721c24' : 
+                         type === 'warning' ? '#856404' : '#0c5460';
         document.querySelector('.content-area').prepend(msg);
-        setTimeout(() => msg.remove(), 3000);
+        setTimeout(() => msg.remove(), 5000);
     }
     
-    // Quick test function
+    // Update endpoint list based on what works
+    function updateEndpointList() {
+        const endpoints = [
+            { id: 'search', name: 'Search Videos', status: '✅ Working' },
+            { id: 'info', name: 'Get Video Info', status: '✅ Working' },
+            { id: 'mp3', name: 'Download MP3', status: '🔗 External Service' },
+            { id: 'mp4', name: 'Download MP4', status: '🔗 External Service' },
+            { id: 'external', name: 'All Download Options', status: '🔗 Multiple Services' }
+        ];
+        
+        const list = document.querySelector('.endpoint-list');
+        if (list) {
+            list.innerHTML = '';
+            endpoints.forEach(ep => {
+                const li = document.createElement('li');
+                li.setAttribute('data-endpoint', ep.id);
+                li.innerHTML = `${ep.name}<br><small>${ep.status}</small>`;
+                li.onclick = () => showEndpoint(ep.id);
+                list.appendChild(li);
+            });
+        }
+    }
+    
+    // Show endpoint
+    function showEndpoint(endpoint) {
+        document.querySelectorAll('.endpoint-section').forEach(el => {
+            el.classList.remove('active');
+        });
+        document.querySelectorAll('.endpoint-list li').forEach(el => {
+            el.classList.remove('active');
+        });
+        
+        document.getElementById(endpoint + 'Endpoint').classList.add('active');
+        event.target.classList.add('active');
+    }
+    
+    // Search function
+    window.searchVideos = async function() {
+        const query = document.getElementById('searchQuery').value.trim();
+        if (!query) return showMessage('warning', 'Please enter a search query');
+        
+        const btn = document.getElementById('searchBtn');
+        const originalText = btn.innerHTML;
+        btn.innerHTML = 'Searching...';
+        btn.disabled = true;
+        
+        try {
+            const response = await fetch(`${API_BASE}/api/search?query=${encodeURIComponent(query)}`);
+            const data = await response.json();
+            
+            if (data.success) {
+                let html = `<h3>Found ${data.count} videos:</h3>`;
+                data.videos.forEach(video => {
+                    html += `
+                        <div style="border:1px solid #ddd; padding:10px; margin:10px 0; border-radius:5px;">
+                            <img src="${video.thumbnail}" width="120" style="float:left; margin-right:10px;">
+                            <strong>${video.title}</strong><br>
+                            <small>Duration: ${video.duration} | Views: ${video.views}</small><br>
+                            <small>By: ${video.author}</small><br>
+                            <button onclick="testVideo('${video.url}')" class="btn-small" style="padding:5px 10px; margin:5px 2px;">Test</button>
+                            <button onclick="quickDownload('${video.url}', 'mp3')" class="btn-small" style="padding:5px 10px; margin:5px 2px;">MP3</button>
+                            <button onclick="quickDownload('${video.url}', 'mp4')" class="btn-small" style="padding:5px 10px; margin:5px 2px;">MP4</button>
+                            <div style="clear:both;"></div>
+                        </div>
+                    `;
+                });
+                document.getElementById('searchResult').innerHTML = html;
+                showMessage('success', `Found ${data.count} videos`);
+            } else {
+                document.getElementById('searchResult').innerHTML = `<div style="color:red;">${data.message}</div>`;
+            }
+        } catch (error) {
+            document.getElementById('searchResult').innerHTML = `<div style="color:red;">Error: ${error.message}</div>`;
+        } finally {
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+        }
+    };
+    
+    // Get video info
+    window.getVideoInfo = async function() {
+        const url = document.getElementById('infoUrl').value.trim();
+        if (!url) return showMessage('warning', 'Please enter a YouTube URL');
+        
+        const btn = document.getElementById('infoBtn');
+        const originalText = btn.innerHTML;
+        btn.innerHTML = 'Loading...';
+        btn.disabled = true;
+        
+        try {
+            const response = await fetch(`${API_BASE}/api/info?url=${encodeURIComponent(url)}`);
+            const data = await response.json();
+            
+            if (data.success) {
+                const info = data.data;
+                let html = `<h3>${info.title}</h3>`;
+                html += `<img src="${info.thumbnail}" width="200"><br>`;
+                html += `<p><strong>Author:</strong> ${info.author}</p>`;
+                html += `<p><strong>Duration:</strong> ${info.duration} (${info.duration_seconds} seconds)</p>`;
+                html += `<p><strong>Views:</strong> ${info.views}</p>`;
+                html += `<h4>Download Links:</h4>`;
+                html += `<ul>`;
+                for (const [service, link] of Object.entries(info.download_links)) {
+                    html += `<li><a href="${link}" target="_blank">${service}</a></li>`;
+                }
+                html += `</ul>`;
+                html += `<p><small>Note: Downloads use external services</small></p>`;
+                document.getElementById('infoResult').innerHTML = html;
+            } else {
+                document.getElementById('infoResult').innerHTML = `<div style="color:red;">${data.message}</div>`;
+            }
+        } catch (error) {
+            document.getElementById('infoResult').innerHTML = `<div style="color:red;">Error: ${error.message}</div>`;
+        } finally {
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+        }
+    };
+    
+    // Quick download function
+    window.quickDownload = function(url, type) {
+        if (type === 'mp3') {
+            window.open(`${API_BASE}/api/download/mp3?url=${encodeURIComponent(url)}`, '_blank');
+            showMessage('info', 'Opening MP3 download in new tab...');
+        } else if (type === 'mp4') {
+            window.open(`${API_BASE}/api/download/mp4?url=${encodeURIComponent(url)}`, '_blank');
+            showMessage('info', 'Opening MP4 download in new tab...');
+        }
+    };
+    
+    // Test video function
     window.testVideo = function(url) {
         document.getElementById('infoUrl').value = url;
-        document.getElementById('infoBtn').click();
+        getVideoInfo();
+    };
+    
+    // MP3 download
+    window.downloadMP3 = function() {
+        const url = document.getElementById('mp3Url').value.trim();
+        if (!url) return showMessage('warning', 'Please enter a YouTube URL');
+        window.open(`${API_BASE}/api/download/mp3?url=${encodeURIComponent(url)}`, '_blank');
+        showMessage('success', 'MP3 download opened in new tab');
+    };
+    
+    // MP4 download
+    window.downloadMP4 = function() {
+        const url = document.getElementById('mp4Url').value.trim();
+        if (!url) return showMessage('warning', 'Please enter a YouTube URL');
+        const quality = document.getElementById('mp4Quality').value;
+        window.open(`${API_BASE}/api/download/mp4?url=${encodeURIComponent(url)}&quality=${quality}`, '_blank');
+        showMessage('success', 'MP4 download opened in new tab');
+    };
+    
+    // Get all external services
+    window.getAllServices = async function() {
+        const url = document.getElementById('externalUrl').value.trim();
+        if (!url) return showMessage('warning', 'Please enter a YouTube URL');
+        
+        try {
+            const response = await fetch(`${API_BASE}/api/external?url=${encodeURIComponent(url)}`);
+            const data = await response.json();
+            
+            if (data.success) {
+                let html = `<h3>Download Services for Video</h3>`;
+                html += `<p><strong>Video ID:</strong> ${data.videoId}</p>`;
+                
+                // MP3 Services
+                html += `<h4>MP3 Download Services:</h4>`;
+                html += `<ul>`;
+                for (const [service, link] of Object.entries(data.services.mp3)) {
+                    html += `<li><a href="${link}" target="_blank">${service}</a></li>`;
+                }
+                html += `</ul>`;
+                
+                // MP4 Services
+                html += `<h4>MP4 Download Services:</h4>`;
+                html += `<ul>`;
+                for (const [service, link] of Object.entries(data.services.mp4)) {
+                    html += `<li><a href="${link}" target="_blank">${service}</a></li>`;
+                }
+                html += `</ul>`;
+                
+                document.getElementById('externalResult').innerHTML = html;
+            }
+        } catch (error) {
+            document.getElementById('externalResult').innerHTML = `<div style="color:red;">Error: ${error.message}</div>`;
+        }
+    };
+    
+    // Check API status
+    window.checkStatus = async function() {
+        try {
+            const response = await fetch(`${API_BASE}/api/status`);
+            const data = await response.json();
+            document.getElementById('statusResult').innerHTML = `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+        } catch (error) {
+            document.getElementById('statusResult').innerHTML = `<div style="color:red;">Error: ${error.message}</div>`;
+        }
     };
 </script>
+   
 </body>
 </html>
