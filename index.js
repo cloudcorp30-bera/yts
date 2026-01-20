@@ -60,10 +60,14 @@ async function ytSearch(query) {
   return new Promise((resolve, reject) => {
     try {
       let searchQuery = query;
+      let isDirectUrl = false;
+      let videoId = null;
+      
       if (query.startsWith('http://') || query.startsWith('https://')) {
-        const videoId = extractVideoId(query);
+        videoId = extractVideoId(query);
         if (videoId) {
           searchQuery = videoId;
+          isDirectUrl = true;
         } else {
           reject(new Error('Invalid YouTube URL'));
           return;
@@ -73,7 +77,7 @@ async function ytSearch(query) {
       yts(searchQuery)
         .then((data) => {
           const videos = data.all
-            .filter(video => video.type === 'video') // Only include videos
+            .filter(video => video.type === 'video')
             .map(video => ({
               type: video.type,
               id: video.videoId,
@@ -92,81 +96,279 @@ async function ytSearch(query) {
                 audio: true
               }
             }));
-          resolve({ videos });
+          
+          // If it was a direct URL, return just that video
+          if (isDirectUrl && videoId) {
+            const directVideo = videos.find(v => v.id === videoId);
+            resolve({ 
+              videos: directVideo ? [directVideo] : videos,
+              isDirectResult: true 
+            });
+          } else {
+            resolve({ 
+              videos: videos,
+              isDirectResult: false 
+            });
+          }
         })
         .catch((error) => {
           reject(error);
-          console.error(error);
         });
     } catch (error) {
       reject(error);
-      console.error(error);
     }
   });
 }
 
-// New: Get video info
-async function getVideoInfo(videoId) {
-  try {
-    const info = await ytdl.getInfo(videoId);
-    
-    // Get available formats
-    const formats = ytdl.filterFormats(info.formats, 'audioandvideo');
-    const audioFormats = ytdl.filterFormats(info.formats, 'audioonly');
-    const videoFormats = ytdl.filterFormats(info.formats, 'videoonly');
-    
-    return {
-      id: info.videoDetails.videoId,
-      title: info.videoDetails.title,
-      author: info.videoDetails.author.name,
-      duration: info.videoDetails.lengthSeconds,
-      thumbnail: info.videoDetails.thumbnails[info.videoDetails.thumbnails.length - 1].url,
-      formats: {
-        audio: audioFormats.map(f => ({
-          quality: f.audioQuality || 'unknown',
-          codec: f.audioCodec,
-          bitrate: f.audioBitrate,
-          container: f.container,
-          url: f.url
-        })),
-        video: videoFormats.map(f => ({
-          quality: f.qualityLabel,
-          codec: f.videoCodec,
-          container: f.container,
-          url: f.url
-        }))
-      }
-    };
-  } catch (error) {
-    throw new Error(`Failed to get video info: ${error.message}`);
-  }
-}
-
-// New: Download video in MP4 format
-app.get('/download/mp4', async (req, res) => {
-  const { id, quality = 'highest' } = req.query;
+// NEW: Combined search and download endpoint
+app.get('/get', async (req, res) => {
+  const { q, type = 'info', quality = 'highest', bitrate = '192' } = req.query;
   
-  if (!id) {
+  if (!q) {
     return res.status(400).json({
       success: false,
-      error: 'Video ID is required'
+      error: 'Query parameter (q) is required'
     });
   }
   
   try {
-    const videoInfo = await ytdl.getInfo(id);
-    const title = videoInfo.videoDetails.title.replace(/[^\w\s]/gi, '');
+    // Check if it's a direct URL
+    const videoId = extractVideoId(q);
+    
+    if (videoId) {
+      // It's a direct URL - handle download directly
+      const url = q.startsWith('http') ? q : `https://www.youtube.com/watch?v=${q}`;
+      
+      switch (type) {
+        case 'info':
+          return res.redirect(`/info?url=${encodeURIComponent(url)}`);
+        case 'mp4':
+          return res.redirect(`/download/mp4?url=${encodeURIComponent(url)}&quality=${quality}`);
+        case 'mp3':
+          return res.redirect(`/download/mp3?url=${encodeURIComponent(url)}&bitrate=${bitrate}`);
+        case 'stream':
+          return res.redirect(`/stream/audio?url=${encodeURIComponent(url)}`);
+        case 'search':
+          // Fall through to search
+          break;
+        default:
+          return res.redirect(`/info?url=${encodeURIComponent(url)}`);
+      }
+    }
+    
+    // It's a search query - perform search
+    const searchResults = await ytSearch(q);
+    
+    if (type === 'search' || type === 'info') {
+      return res.json({
+        success: true,
+        query: q,
+        type: 'search_results',
+        count: searchResults.videos.length,
+        videos: searchResults.videos.map(video => ({
+          ...video,
+          download_urls: {
+            info: `/get?q=${video.url}&type=info`,
+            mp4: `/get?q=${video.url}&type=mp4`,
+            mp3: `/get?q=${video.url}&type=mp3`,
+            stream: `/get?q=${video.url}&type=stream`
+          }
+        }))
+      });
+    }
+    
+    // If user wants to download from search results, return first result with download options
+    if (searchResults.videos.length > 0) {
+      const firstVideo = searchResults.videos[0];
+      
+      res.json({
+        success: true,
+        query: q,
+        type: 'download_options',
+        selected_video: {
+          ...firstVideo,
+          download_urls: {
+            info: `/get?q=${firstVideo.url}&type=info`,
+            mp4: `/get?q=${firstVideo.url}&type=mp4`,
+            mp3: `/get?q=${firstVideo.url}&type=mp3`,
+            stream: `/get?q=${firstVideo.url}&type=stream`
+          }
+        },
+        other_options: searchResults.videos.slice(1, 5).map(video => ({
+          id: video.id,
+          title: video.name,
+          duration: video.duration,
+          author: video.author,
+          select_url: `/get?q=${video.url}&type=${type}`
+        }))
+      });
+    } else {
+      res.json({
+        success: false,
+        error: 'No videos found for your search query'
+      });
+    }
+  } catch (error) {
+    console.error('Get endpoint error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to process request'
+    });
+  }
+});
+
+// Smart download endpoint - NEW
+app.get('/smart-download/:type', async (req, res) => {
+  const { type } = req.params; // mp3 or mp4
+  const { q, quality = type === 'mp3' ? '192' : 'highest' } = req.query;
+  
+  if (!q) {
+    return res.status(400).json({
+      success: false,
+      error: 'Query parameter (q) is required'
+    });
+  }
+  
+  try {
+    // Check if it's a direct URL
+    const videoId = extractVideoId(q);
+    
+    if (videoId) {
+      // Direct URL - redirect to download
+      const url = q.startsWith('http') ? q : `https://www.youtube.com/watch?v=${q}`;
+      return res.redirect(`/download/${type}?url=${encodeURIComponent(url)}&${type === 'mp3' ? 'bitrate' : 'quality'}=${quality}`);
+    }
+    
+    // It's a search query - search and download first result
+    const searchResults = await ytSearch(q);
+    
+    if (searchResults.videos.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'No videos found for your search query'
+      });
+    }
+    
+    // Download the first search result
+    const firstVideo = searchResults.videos[0];
+    const url = firstVideo.url;
+    
+    return res.redirect(`/download/${type}?url=${encodeURIComponent(url)}&${type === 'mp3' ? 'bitrate' : 'quality'}=${quality}`);
+    
+  } catch (error) {
+    console.error('Smart download error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to process download request'
+    });
+  }
+});
+
+// Get video info (kept for backward compatibility)
+app.get('/info', async (req, res) => {
+  const { url } = req.query;
+  
+  if (!url) {
+    return res.status(400).json({
+      success: false,
+      error: 'URL parameter is required'
+    });
+  }
+  
+  const videoId = extractVideoId(url);
+  if (!videoId) {
+    return res.status(400).json({
+      success: false,
+      error: 'Invalid YouTube URL'
+    });
+  }
+  
+  try {
+    const info = await ytdl.getInfo(videoId);
+    
+    const formats = {
+      audio: ytdl.filterFormats(info.formats, 'audioonly').map(f => ({
+        quality: f.audioQuality || 'unknown',
+        bitrate: f.audioBitrate,
+        container: f.container,
+        codec: f.audioCodec
+      })),
+      video: ytdl.filterFormats(info.formats, 'videoonly').map(f => ({
+        quality: f.qualityLabel,
+        container: f.container,
+        codec: f.videoCodec
+      })),
+      combined: ytdl.filterFormats(info.formats, 'audioandvideo').map(f => ({
+        quality: f.qualityLabel,
+        container: f.container,
+        hasAudio: !!f.audioCodec,
+        hasVideo: !!f.videoCodec
+      }))
+    };
+    
+    res.json({
+      success: true,
+      data: {
+        id: info.videoDetails.videoId,
+        title: info.videoDetails.title,
+        author: info.videoDetails.author.name,
+        duration: parseInt(info.videoDetails.lengthSeconds),
+        thumbnail: info.videoDetails.thumbnails[info.videoDetails.thumbnails.length - 1].url,
+        formats: formats,
+        availableQualities: {
+          audio: [...new Set(formats.audio.map(f => f.quality))],
+          video: [...new Set(formats.video.map(f => f.quality))],
+          combined: [...new Set(formats.combined.map(f => f.quality))]
+        },
+        download_urls: {
+          mp4: `/get?q=${url}&type=mp4`,
+          mp3: `/get?q=${url}&type=mp3`,
+          stream: `/get?q=${url}&type=stream`
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Info error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get video info'
+    });
+  }
+});
+
+// Download MP4 (kept for backward compatibility)
+app.get('/download/mp4', async (req, res) => {
+  const { url, quality = 'highest' } = req.query;
+  
+  if (!url) {
+    return res.status(400).json({
+      success: false,
+      error: 'URL parameter is required'
+    });
+  }
+  
+  const videoId = extractVideoId(url);
+  if (!videoId) {
+    return res.status(400).json({
+      success: false,
+      error: 'Invalid YouTube URL'
+    });
+  }
+  
+  try {
+    const info = await ytdl.getInfo(videoId);
+    const title = info.videoDetails.title.replace(/[^\w\s]/gi, '_').substring(0, 100);
     
     res.header('Content-Disposition', `attachment; filename="${title}.mp4"`);
     res.header('Content-Type', 'video/mp4');
     
-    ytdl(id, {
+    ytdl(videoId, {
       quality: quality === 'highest' ? 'highest' : quality,
       filter: 'audioandvideo'
     }).pipe(res);
     
   } catch (error) {
-    console.error('Download error:', error);
+    console.error('MP4 download error:', error);
     res.status(500).json({
       success: false,
       error: 'Failed to download video'
@@ -174,46 +376,51 @@ app.get('/download/mp4', async (req, res) => {
   }
 });
 
-// New: Download audio as MP3
+// Download MP3 (kept for backward compatibility)
 app.get('/download/mp3', async (req, res) => {
-  const { id, bitrate = '128' } = req.query;
+  const { url, bitrate = '192' } = req.query;
   
-  if (!id) {
+  if (!url) {
     return res.status(400).json({
       success: false,
-      error: 'Video ID is required'
+      error: 'URL parameter is required'
+    });
+  }
+  
+  const videoId = extractVideoId(url);
+  if (!videoId) {
+    return res.status(400).json({
+      success: false,
+      error: 'Invalid YouTube URL'
     });
   }
   
   try {
-    const videoInfo = await ytdl.getInfo(id);
-    const title = videoInfo.videoDetails.title.replace(/[^\w\s]/gi, '');
-    const tempFilePath = path.join(tempDir, `${id}_${Date.now()}.mp3`);
+    const info = await ytdl.getInfo(videoId);
+    const title = info.videoDetails.title.replace(/[^\w\s]/gi, '_').substring(0, 100);
     
-    // Stream audio and convert to MP3
-    const audioStream = ytdl(id, { quality: 'highestaudio' });
+    res.header('Content-Disposition', `attachment; filename="${title}.mp3"`);
+    res.header('Content-Type', 'audio/mpeg');
+    
+    const audioStream = ytdl(videoId, { 
+      quality: 'highestaudio',
+      filter: 'audioonly'
+    });
     
     ffmpeg(audioStream)
       .audioBitrate(parseInt(bitrate))
       .toFormat('mp3')
       .on('error', (err) => {
-        console.error('FFmpeg error:', err);
+        console.error('FFmpeg conversion error:', err);
         res.status(500).json({
           success: false,
-          error: 'Conversion failed'
+          error: 'Audio conversion failed'
         });
-      })
-      .on('end', () => {
-        // Clean up temp file after sending
-        fs.unlink(tempFilePath, () => {});
       })
       .pipe(res, { end: true });
     
-    res.header('Content-Disposition', `attachment; filename="${title}.mp3"`);
-    res.header('Content-Type', 'audio/mpeg');
-    
   } catch (error) {
-    console.error('MP3 conversion error:', error);
+    console.error('MP3 download error:', error);
     res.status(500).json({
       success: false,
       error: 'Failed to convert to MP3'
@@ -221,51 +428,34 @@ app.get('/download/mp3', async (req, res) => {
   }
 });
 
-// New: Get available formats for a video
-app.get('/formats/:id', async (req, res) => {
-  const { id } = req.params;
+// Audio stream (kept for backward compatibility)
+app.get('/stream/audio', async (req, res) => {
+  const { url } = req.query;
   
-  if (!id) {
+  if (!url) {
     return res.status(400).json({
       success: false,
-      error: 'Video ID is required'
+      error: 'URL parameter is required'
+    });
+  }
+  
+  const videoId = extractVideoId(url);
+  if (!videoId) {
+    return res.status(400).json({
+      success: false,
+      error: 'Invalid YouTube URL'
     });
   }
   
   try {
-    const info = await getVideoInfo(id);
-    res.json({
-      success: true,
-      data: info
-    });
-  } catch (error) {
-    console.error('Formats error:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to get video formats'
-    });
-  }
-});
-
-// New: Stream audio (play in browser without download)
-app.get('/stream/audio/:id', async (req, res) => {
-  const { id } = req.params;
-  
-  if (!id) {
-    return res.status(400).json({
-      success: false,
-      error: 'Video ID is required'
-    });
-  }
-  
-  try {
-    const audioStream = ytdl(id, {
+    const audioStream = ytdl(videoId, {
       quality: 'highestaudio',
       filter: 'audioonly'
     });
     
     res.header('Content-Type', 'audio/mpeg');
     res.header('Accept-Ranges', 'bytes');
+    res.header('Cache-Control', 'no-cache');
     
     audioStream.pipe(res);
   } catch (error) {
@@ -277,7 +467,7 @@ app.get('/stream/audio/:id', async (req, res) => {
   }
 });
 
-// Updated search endpoint with video info
+// Search endpoint (kept for backward compatibility)
 app.get('/search', async (req, res) => {
   const query = req.query.q || req.query.query;
   if (!query) {
@@ -289,38 +479,81 @@ app.get('/search', async (req, res) => {
 
   try {
     const results = await ytSearch(query);
-    res.json(results);
+    
+    // Add download URLs to each video
+    const videosWithDownloads = results.videos.map(video => ({
+      ...video,
+      download_urls: {
+        info: `/get?q=${video.url}&type=info`,
+        mp4: `/get?q=${video.url}&type=mp4`,
+        mp3: `/get?q=${video.url}&type=mp3`,
+        stream: `/get?q=${video.url}&type=stream`
+      }
+    }));
+    
+    res.json({
+      ...results,
+      videos: videosWithDownloads
+    });
   } catch (error) {
-    console.error('Error fetching yts data:', error);
+    console.error('Search error:', error);
     res.status(500).json({
       success: false,
-      error: 'Internal Server Error'
+      error: 'Failed to search videos'
     });
   }
 });
 
-// Root endpoint with instructions
+// Home page with API documentation
 app.get('/', (req, res) => {
   res.json({
     success: true,
-    message: 'YouTube Download API',
+    message: 'Gifted YouTube API',
+    version: '1.0.0',
     endpoints: {
+      // New unified endpoints
+      smart_get: '/get?q=query_or_url&type=info|mp3|mp4|stream|search',
+      smart_download: '/smart-download/mp3?q=query_or_url&bitrate=192',
+      smart_download_mp4: '/smart-download/mp4?q=query_or_url&quality=highest',
+      
+      // Legacy endpoints (backward compatibility)
       search: '/search?q=query',
-      formats: '/formats/[video-id]',
-      download: {
-        mp4: '/download/mp4?id=[video-id]&quality=[quality]',
-        mp3: '/download/mp3?id=[video-id]&bitrate=[128|192|320]'
-      },
-      stream: '/stream/audio/[video-id]'
+      info: '/info?url=youtube_url',
+      download_mp4: '/download/mp4?url=youtube_url&quality=highest',
+      download_mp3: '/download/mp3?url=youtube_url&bitrate=192',
+      stream_audio: '/stream/audio?url=youtube_url'
     },
     examples: {
-      search: 'GET /search?q=coldplay',
-      download_mp3: 'GET /download/mp3?id=dQw4w9WgXcQ'
-    }
+      // Using search queries (no need for URL!)
+      search_and_info: '/get?q=coldplay yellow&type=info',
+      search_and_download_first: '/get?q=coldplay yellow&type=mp3',
+      smart_download_example: '/smart-download/mp3?q=coldplay yellow&bitrate=320',
+      
+      // Still works with URLs
+      direct_url_info: '/get?q=https://youtube.com/watch?v=...&type=info',
+      direct_url_download: '/get?q=https://youtube.com/watch?v=...&type=mp4',
+      
+      // Legacy examples
+      search: '/search?q=coldplay',
+      info: '/info?url=https://www.youtube.com/watch?v=dQw4w9WgXcQ'
+    },
+    notes: 'You can now use search queries directly! No need to find YouTube URLs first.'
+  });
+});
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error('Server error:', err);
+  res.status(500).json({
+    success: false,
+    error: 'Internal server error'
   });
 });
 
 app.listen(port, () => {
-  console.log(`Server is running on port: ${port}`);
-  console.log(`Temp directory: ${tempDir}`);
+  console.log(`🚀 Server running on port: ${port}`);
+  console.log(`📁 Temp directory: ${tempDir}`);
+  console.log(`🔗 Base URL: http://localhost:${port}`);
+  console.log(`✨ New feature: Search and download without URLs!`);
+  console.log(`   Example: /get?q=your_search_query&type=mp3`);
 });
