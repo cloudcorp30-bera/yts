@@ -1,0 +1,31 @@
+{
+  "name": "gifted-yts",
+  "version": "1.0.0",
+  "description": "A Simple YouTube Search and Download API",
+  "main": "./index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js"
+  },
+  "dependencies": {
+    "cors": "*",
+    "express": "*",
+    "yt-search": "*",
+    "ytdl-core": "*",
+    "fluent-ffmpeg": "*",
+    "ffmpeg-static": "*"
+  },
+  "devDependencies": {
+    "nodemon": "*"
+  },
+  "keywords": [
+    "youtube",
+    "downloader",
+    "mp3",
+    "mp4",
+    "api",
+    "search"
+  ],
+  "author": "Your Name",
+  "license": "MIT"
+}
