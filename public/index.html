@@ -384,167 +384,276 @@
         </div>
     </div>
 
-    <script>
-        // API Base URL
-        const API_BASE_URL = window.location.origin + '/api';
+   <script>
+    // API Base URL
+    const API_BASE_URL = window.location.origin;
+    let currentApiKey = 'bera';
+    
+    // Initialize when page loads
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log('Dashboard loaded. API Base URL:', API_BASE_URL);
         
-        // Current API Key
-        let currentApiKey = 'bera';
-        
-        // Initialize
-        document.addEventListener('DOMContentLoaded', function() {
-            const apiKeyInput = document.getElementById('apiKey');
+        // Initialize API key input
+        const apiKeyInput = document.getElementById('apiKey');
+        if (apiKeyInput) {
             apiKeyInput.value = currentApiKey;
             apiKeyInput.addEventListener('change', function() {
                 currentApiKey = this.value;
-                checkStatus();
+                console.log('API Key changed to:', currentApiKey);
             });
-            
-            // Load initial status
-            checkStatus();
+        }
+        
+        // Set up event listeners for all buttons
+        setupEventListeners();
+        
+        // Load initial status
+        checkStatus();
+    });
+    
+    // Setup all button listeners
+    function setupEventListeners() {
+        // Search button
+        const searchBtn = document.getElementById('searchBtn');
+        if (searchBtn) {
+            searchBtn.addEventListener('click', searchVideos);
+        }
+        
+        // Info button
+        const infoBtn = document.getElementById('infoBtn');
+        if (infoBtn) {
+            infoBtn.addEventListener('click', getVideoInfo);
+        }
+        
+        // MP3 button
+        const mp3Btn = document.getElementById('mp3Btn');
+        if (mp3Btn) {
+            mp3Btn.addEventListener('click', downloadMP3);
+        }
+        
+        // MP4 button
+        const mp4Btn = document.getElementById('mp4Btn');
+        if (mp4Btn) {
+            mp4Btn.addEventListener('click', downloadMP4);
+        }
+        
+        // Status button
+        const statusBtn = document.getElementById('statusBtn');
+        if (statusBtn) {
+            statusBtn.addEventListener('click', checkStatus);
+        }
+        
+        // Copy API key button
+        const copyBtn = document.querySelector('button[onclick="copyApiKey()"]');
+        if (copyBtn) {
+            copyBtn.addEventListener('click', copyApiKey);
+        }
+        
+        // Endpoint navigation
+        document.querySelectorAll('.endpoint-list li').forEach(item => {
+            item.addEventListener('click', function() {
+                showEndpoint(this.getAttribute('data-endpoint'));
+            });
+        });
+    }
+    
+    // Show selected endpoint
+    function showEndpoint(endpoint) {
+        console.log('Showing endpoint:', endpoint);
+        
+        // Hide all endpoints
+        document.querySelectorAll('.endpoint-section').forEach(el => {
+            el.classList.remove('active');
+        });
+        
+        // Remove active class from all list items
+        document.querySelectorAll('.endpoint-list li').forEach(el => {
+            el.classList.remove('active');
         });
         
         // Show selected endpoint
-        function showEndpoint(endpoint) {
-            // Hide all endpoints
-            document.querySelectorAll('.endpoint-section').forEach(el => {
-                el.classList.remove('active');
-            });
-            
-            // Remove active class from all list items
-            document.querySelectorAll('.endpoint-list li').forEach(el => {
-                el.classList.remove('active');
-            });
-            
-            // Show selected endpoint
-            document.getElementById(endpoint + 'Endpoint').classList.add('active');
-            
-            // Add active class to clicked list item
-            event.target.classList.add('active');
+        const endpointElement = document.getElementById(endpoint + 'Endpoint');
+        if (endpointElement) {
+            endpointElement.classList.add('active');
         }
         
-        // Copy API Key
-        function copyApiKey() {
-            const apiKeyInput = document.getElementById('apiKey');
+        // Add active class to clicked list item
+        event.target.classList.add('active');
+    }
+    
+    // Copy API Key
+    function copyApiKey() {
+        const apiKeyInput = document.getElementById('apiKey');
+        if (apiKeyInput) {
             apiKeyInput.select();
             document.execCommand('copy');
             alert('API Key copied to clipboard!');
         }
+    }
+    
+    // Show loading state
+    function showLoading(buttonId) {
+        const button = document.getElementById(buttonId);
+        if (!button) return null;
         
-        // Show loading state
-        function showLoading(buttonId) {
-            const button = document.getElementById(buttonId);
-            const originalText = button.innerHTML;
-            button.innerHTML = '<span class="loading"></span> Loading...';
-            button.disabled = true;
-            return originalText;
+        const originalText = button.innerHTML;
+        button.innerHTML = '<span class="loading"></span> Loading...';
+        button.disabled = true;
+        return originalText;
+    }
+    
+    // Hide loading state
+    function hideLoading(buttonId, originalText) {
+        const button = document.getElementById(buttonId);
+        if (!button) return;
+        
+        button.innerHTML = originalText;
+        button.disabled = false;
+    }
+    
+    // Display result
+    function displayResult(elementId, data) {
+        const element = document.getElementById(elementId);
+        if (!element) {
+            console.error('Element not found:', elementId);
+            return;
         }
         
-        // Hide loading state
-        function hideLoading(buttonId, originalText) {
-            const button = document.getElementById(buttonId);
-            button.innerHTML = originalText;
-            button.disabled = false;
+        if (typeof data === 'object') {
+            element.innerHTML = '<pre>' + JSON.stringify(data, null, 2) + '</pre>';
+        } else {
+            element.innerHTML = data;
         }
+    }
+    
+    // Check API Status
+    async function checkStatus() {
+        console.log('Checking API status...');
+        const originalText = showLoading('statusBtn');
         
-        // Display result
-        function displayResult(elementId, data) {
-            const element = document.getElementById(elementId);
-            if (typeof data === 'object') {
-                element.innerHTML = '<pre>' + JSON.stringify(data, null, 2) + '</pre>';
-            } else {
-                element.innerHTML = data;
-            }
-        }
-        
-        // Check API Status
-        async function checkStatus() {
-            const originalText = showLoading('statusBtn');
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/status?apikey=${currentApiKey}`);
+            console.log('Status Response:', response.status);
             
-            try {
-                const response = await fetch(`${API_BASE_URL}/status?apikey=${currentApiKey}`);
-                const data = await response.json();
+            const data = await response.json();
+            console.log('Status Data:', data);
+            
+            displayResult('statusResult', data);
+            
+            // Update usage stats
+            if (data.success && data.data) {
+                const tierStat = document.getElementById('tierStat');
+                const requestsStat = document.getElementById('requestsStat');
+                const remainingStat = document.getElementById('remainingStat');
+                const resetStat = document.getElementById('resetStat');
                 
-                if (data.success) {
-                    displayResult('statusResult', data);
-                    
-                    // Update usage stats
-                    if (data.data) {
-                        document.getElementById('tierStat').textContent = data.data.tier || 'Free';
-                        document.getElementById('requestsStat').textContent = data.data.monthlyRequests || 0;
-                        document.getElementById('remainingStat').textContent = data.data.remainingRequests || 30000;
-                        
-                        if (data.data.resetDate) {
-                            const resetDate = new Date(data.data.resetDate);
-                            document.getElementById('resetStat').textContent = resetDate.toLocaleDateString();
-                        }
-                    }
-                } else {
-                    displayResult('statusResult', data);
+                if (tierStat) tierStat.textContent = data.data.tier || 'Free';
+                if (requestsStat) requestsStat.textContent = data.data.monthlyRequests || 0;
+                if (remainingStat) remainingStat.textContent = data.data.remainingRequests || 30000;
+                
+                if (resetStat && data.data.resetDate) {
+                    const resetDate = new Date(data.data.resetDate);
+                    resetStat.textContent = resetDate.toLocaleDateString();
                 }
-            } catch (error) {
-                displayResult('statusResult', { error: 'Failed to connect to API', details: error.message });
-            } finally {
-                hideLoading('statusBtn', originalText);
             }
+        } catch (error) {
+            console.error('Status check failed:', error);
+            displayResult('statusResult', { 
+                error: 'Failed to connect to API', 
+                details: error.message,
+                url: `${API_BASE_URL}/api/status?apikey=${currentApiKey}`
+            });
+        } finally {
+            hideLoading('statusBtn', originalText);
+        }
+    }
+    
+    // Search Videos
+    async function searchVideos() {
+        const query = document.getElementById('searchQuery')?.value.trim();
+        console.log('Search query:', query);
+        
+        if (!query) {
+            alert('Please enter a search query');
+            return;
         }
         
-        // Search Videos
-        async function searchVideos() {
-            const query = document.getElementById('searchQuery').value.trim();
-            if (!query) {
-                alert('Please enter a search query');
-                return;
-            }
+        const originalText = showLoading('searchBtn');
+        
+        try {
+            const url = `${API_BASE_URL}/api/search?apikey=${currentApiKey}&query=${encodeURIComponent(query)}`;
+            console.log('Search URL:', url);
             
-            const originalText = showLoading('searchBtn');
+            const response = await fetch(url);
+            console.log('Search Response:', response.status);
             
-            try {
-                const response = await fetch(`${API_BASE_URL}/search?apikey=${currentApiKey}&query=${encodeURIComponent(query)}`);
-                const data = await response.json();
-                displayResult('searchResult', data);
-            } catch (error) {
-                displayResult('searchResult', { error: 'Failed to search videos', details: error.message });
-            } finally {
-                hideLoading('searchBtn', originalText);
-            }
+            const data = await response.json();
+            console.log('Search Data:', data);
+            
+            displayResult('searchResult', data);
+        } catch (error) {
+            console.error('Search failed:', error);
+            displayResult('searchResult', { 
+                error: 'Failed to search videos', 
+                details: error.message,
+                url: `${API_BASE_URL}/api/search?apikey=${currentApiKey}&query=${encodeURIComponent(query)}`
+            });
+        } finally {
+            hideLoading('searchBtn', originalText);
+        }
+    }
+    
+    // Get Video Info
+    async function getVideoInfo() {
+        const url = document.getElementById('infoUrl')?.value.trim();
+        console.log('Info URL:', url);
+        
+        if (!url) {
+            alert('Please enter a YouTube URL');
+            return;
         }
         
-        // Get Video Info
-        async function getVideoInfo() {
-            const url = document.getElementById('infoUrl').value.trim();
-            if (!url) {
-                alert('Please enter a YouTube URL');
-                return;
-            }
+        const originalText = showLoading('infoBtn');
+        
+        try {
+            const apiUrl = `${API_BASE_URL}/api/info?apikey=${currentApiKey}&url=${encodeURIComponent(url)}`;
+            console.log('Info API URL:', apiUrl);
             
-            const originalText = showLoading('infoBtn');
+            const response = await fetch(apiUrl);
+            console.log('Info Response:', response.status);
             
-            try {
-                const response = await fetch(`${API_BASE_URL}/info?apikey=${currentApiKey}&url=${encodeURIComponent(url)}`);
-                const data = await response.json();
-                displayResult('infoResult', data);
-            } catch (error) {
-                displayResult('infoResult', { error: 'Failed to get video info', details: error.message });
-            } finally {
-                hideLoading('infoBtn', originalText);
-            }
+            const data = await response.json();
+            console.log('Info Data:', data);
+            
+            displayResult('infoResult', data);
+        } catch (error) {
+            console.error('Info failed:', error);
+            displayResult('infoResult', { 
+                error: 'Failed to get video info', 
+                details: error.message 
+            });
+        } finally {
+            hideLoading('infoBtn', originalText);
+        }
+    }
+    
+    // Download MP3
+    function downloadMP3() {
+        const url = document.getElementById('mp3Url')?.value.trim();
+        const quality = document.getElementById('mp3Quality')?.value || '128';
+        
+        console.log('MP3 Download:', { url, quality });
+        
+        if (!url) {
+            alert('Please enter a YouTube URL');
+            return;
         }
         
-        // Download MP3
-        function downloadMP3() {
-            const url = document.getElementById('mp3Url').value.trim();
-            const quality = document.getElementById('mp3Quality').value;
-            
-            if (!url) {
-                alert('Please enter a YouTube URL');
-                return;
-            }
-            
-            const originalText = showLoading('mp3Btn');
-            
+        const originalText = showLoading('mp3Btn');
+        
+        try {
             // Create download link
-            const downloadUrl = `${API_BASE_URL}/download/mp3?apikey=${currentApiKey}&url=${encodeURIComponent(url)}&quality=${quality}`;
+            const downloadUrl = `${API_BASE_URL}/api/download/mp3?apikey=${currentApiKey}&url=${encodeURIComponent(url)}&quality=${quality}`;
+            console.log('MP3 Download URL:', downloadUrl);
             
             // Create temporary anchor element
             const a = document.createElement('a');
@@ -556,26 +665,38 @@
             
             displayResult('mp3Result', {
                 message: 'MP3 download started...',
-                url: downloadUrl
+                url: downloadUrl,
+                timestamp: new Date().toISOString()
             });
-            
+        } catch (error) {
+            console.error('MP3 download failed:', error);
+            displayResult('mp3Result', { 
+                error: 'Download failed', 
+                details: error.message 
+            });
+        } finally {
             hideLoading('mp3Btn', originalText);
         }
+    }
+    
+    // Download MP4
+    function downloadMP4() {
+        const url = document.getElementById('mp4Url')?.value.trim();
+        const quality = document.getElementById('mp4Quality')?.value || '360p';
         
-        // Download MP4
-        function downloadMP4() {
-            const url = document.getElementById('mp4Url').value.trim();
-            const quality = document.getElementById('mp4Quality').value;
-            
-            if (!url) {
-                alert('Please enter a YouTube URL');
-                return;
-            }
-            
-            const originalText = showLoading('mp4Btn');
-            
+        console.log('MP4 Download:', { url, quality });
+        
+        if (!url) {
+            alert('Please enter a YouTube URL');
+            return;
+        }
+        
+        const originalText = showLoading('mp4Btn');
+        
+        try {
             // Create download link
-            const downloadUrl = `${API_BASE_URL}/download/mp4?apikey=${currentApiKey}&url=${encodeURIComponent(url)}&quality=${quality}`;
+            const downloadUrl = `${API_BASE_URL}/api/download/mp4?apikey=${currentApiKey}&url=${encodeURIComponent(url)}&quality=${quality}`;
+            console.log('MP4 Download URL:', downloadUrl);
             
             // Create temporary anchor element
             const a = document.createElement('a');
@@ -587,11 +708,22 @@
             
             displayResult('mp4Result', {
                 message: 'MP4 download started...',
-                url: downloadUrl
+                url: downloadUrl,
+                timestamp: new Date().toISOString()
             });
-            
+        } catch (error) {
+            console.error('MP4 download failed:', error);
+            displayResult('mp4Result', { 
+                error: 'Download failed', 
+                details: error.message 
+            });
+        } finally {
             hideLoading('mp4Btn', originalText);
         }
-    </script>
+    }
+    
+    // Add console logging to all functions
+    console.log('Dashboard JavaScript loaded successfully');
+</script>
 </body>
 </html>
