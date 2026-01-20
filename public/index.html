@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bera YouTube API - Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #1a237e 0%, #283593 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            opacity: 0.9;
+            font-size: 1.1rem;
+        }
+        
+        .main-content {
+            display: grid;
+            grid-template-columns: 300px 1fr;
+            gap: 0;
+        }
+        
+        .sidebar {
+            background: #f8f9fa;
+            padding: 20px;
+            border-right: 1px solid #e9ecef;
+        }
+        
+        .api-key-section {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        
+        .api-key-section input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            font-family: monospace;
+        }
+        
+        .endpoint-list {
+            list-style: none;
+        }
+        
+        .endpoint-list li {
+            padding: 10px 15px;
+            margin: 5px 0;
+            background: white;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s;
+            border: 1px solid #e9ecef;
+        }
+        
+        .endpoint-list li:hover {
+            background: #007bff;
+            color: white;
+            transform: translateX(5px);
+        }
+        
+        .endpoint-list li.active {
+            background: #007bff;
+            color: white;
+            font-weight: bold;
+        }
+        
+        .content-area {
+            padding: 20px;
+        }
+        
+        .endpoint-section {
+            display: none;
+        }
+        
+        .endpoint-section.active {
+            display: block;
+            animation: fadeIn 0.3s ease;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #333;
+        }
+        
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e9ecef;
+            border-radius: 6px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+        
+        .form-group input:focus, .form-group select:focus {
+            border-color: #007bff;
+            outline: none;
+        }
+        
+        .btn {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            transition: all 0.3s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .btn:hover {
+            background: #0056b3;
+            transform: translateY(-2px);
+        }
+        
+        .btn:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .result-area {
+            margin-top: 30px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            min-height: 200px;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        
+        .result-area pre {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #007bff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .usage-stats {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-top: 20px;
+        }
+        
+        .stat-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid #e9ecef;
+        }
+        
+        .stat-item:last-child {
+            border-bottom: none;
+        }
+        
+        .stat-value {
+            font-weight: bold;
+            color: #007bff;
+        }
+        
+        .footer {
+            text-align: center;
+            padding: 20px;
+            background: #f8f9fa;
+            border-top: 1px solid #e9ecef;
+            color: #6c757d;
+            font-size: 14px;
+        }
+        
+        @media (max-width: 768px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+            
+            .sidebar {
+                border-right: none;
+                border-bottom: 1px solid #e9ecef;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Bera YouTube API</h1>
+            <p>Complete YouTube Search & Download API by Bruce Bera</p>
+        </div>
+        
+        <div class="main-content">
+            <div class="sidebar">
+                <div class="api-key-section">
+                    <h3>API Configuration</h3>
+                    <input type="text" id="apiKey" value="bera" placeholder="Enter your API key">
+                    <button onclick="copyApiKey()" class="btn">Copy Key</button>
+                    <button onclick="checkStatus()" class="btn">Check Status</button>
+                </div>
+                
+                <h3>Available Endpoints</h3>
+                <ul class="endpoint-list">
+                    <li onclick="showEndpoint('search')" class="active">Search Videos</li>
+                    <li onclick="showEndpoint('info')">Get Video Info</li>
+                    <li onclick="showEndpoint('mp3')">Download MP3</li>
+                    <li onclick="showEndpoint('mp4')">Download MP4</li>
+                    <li onclick="showEndpoint('status')">API Status</li>
+                </ul>
+                
+                <div class="usage-stats" id="usageStats">
+                    <h3>API Usage</h3>
+                    <div class="stat-item">
+                        <span>Tier:</span>
+                        <span class="stat-value" id="tierStat">Free</span>
+                    </div>
+                    <div class="stat-item">
+                        <span>Requests:</span>
+                        <span class="stat-value" id="requestsStat">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <span>Remaining:</span>
+                        <span class="stat-value" id="remainingStat">30000</span>
+                    </div>
+                    <div class="stat-item">
+                        <span>Reset:</span>
+                        <span class="stat-value" id="resetStat">Next Month</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="content-area">
+                <!-- Search Endpoint -->
+                <div id="searchEndpoint" class="endpoint-section active">
+                    <h2>Search YouTube Videos</h2>
+                    <div class="form-group">
+                        <label for="searchQuery">Search Query</label>
+                        <input type="text" id="searchQuery" placeholder="Enter search terms...">
+                    </div>
+                    <button onclick="searchVideos()" class="btn" id="searchBtn">
+                        Search Videos
+                    </button>
+                    <div class="result-area" id="searchResult"></div>
+                </div>
+                
+                <!-- Info Endpoint -->
+                <div id="infoEndpoint" class="endpoint-section">
+                    <h2>Get Video Information</h2>
+                    <div class="form-group">
+                        <label for="infoUrl">YouTube URL</label>
+                        <input type="text" id="infoUrl" placeholder="https://youtube.com/watch?v=...">
+                    </div>
+                    <button onclick="getVideoInfo()" class="btn" id="infoBtn">
+                        Get Info
+                    </button>
+                    <div class="result-area" id="infoResult"></div>
+                </div>
+                
+                <!-- MP3 Download Endpoint -->
+                <div id="mp3Endpoint" class="endpoint-section">
+                    <h2>Download MP3</h2>
+                    <div class="form-group">
+                        <label for="mp3Url">YouTube URL</label>
+                        <input type="text" id="mp3Url" placeholder="https://youtube.com/watch?v=...">
+                    </div>
+                    <div class="form-group">
+                        <label for="mp3Quality">Quality</label>
+                        <select id="mp3Quality">
+                            <option value="64">64 kbps</option>
+                            <option value="128" selected>128 kbps</option>
+                            <option value="192">192 kbps</option>
+                            <option value="256">256 kbps</option>
+                            <option value="320">320 kbps</option>
+                        </select>
+                    </div>
+                    <button onclick="downloadMP3()" class="btn" id="mp3Btn">
+                        Download MP3
+                    </button>
+                    <div class="result-area" id="mp3Result"></div>
+                </div>
+                
+                <!-- MP4 Download Endpoint -->
+                <div id="mp4Endpoint" class="endpoint-section">
+                    <h2>Download MP4</h2>
+                    <div class="form-group">
+                        <label for="mp4Url">YouTube URL</label>
+                        <input type="text" id="mp4Url" placeholder="https://youtube.com/watch?v=...">
+                    </div>
+                    <div class="form-group">
+                        <label for="mp4Quality">Quality</label>
+                        <select id="mp4Quality">
+                            <option value="144p">144p</option>
+                            <option value="240p">240p</option>
+                            <option value="360p" selected>360p</option>
+                            <option value="480p">480p</option>
+                            <option value="720p">720p</option>
+                            <option value="1080p">1080p</option>
+                            <option value="highest">Highest Available</option>
+                        </select>
+                    </div>
+                    <button onclick="downloadMP4()" class="btn" id="mp4Btn">
+                        Download MP4
+                    </button>
+                    <div class="result-area" id="mp4Result"></div>
+                </div>
+                
+                <!-- Status Endpoint -->
+                <div id="statusEndpoint" class="endpoint-section">
+                    <h2>API Status</h2>
+                    <button onclick="checkStatus()" class="btn" id="statusBtn">
+                        Check API Status
+                    </button>
+                    <div class="result-area" id="statusResult"></div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <p>© 2024 Bera YouTube API. Created by Bruce Bera. All rights reserved.</p>
+            <p>API Documentation | Contact Support | Terms of Service</p>
+        </div>
+    </div>
+
+    <script>
+        // API Base URL
+        const API_BASE_URL = window.location.origin + '/api';
+        
+        // Current API Key
+        let currentApiKey = 'bera';
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            const apiKeyInput = document.getElementById('apiKey');
+            apiKeyInput.value = currentApiKey;
+            apiKeyInput.addEventListener('change', function() {
+                currentApiKey = this.value;
+                checkStatus();
+            });
+            
+            // Load initial status
+            checkStatus();
+        });
+        
+        // Show selected endpoint
+        function showEndpoint(endpoint) {
+            // Hide all endpoints
+            document.querySelectorAll('.endpoint-section').forEach(el => {
+                el.classList.remove('active');
+            });
+            
+            // Remove active class from all list items
+            document.querySelectorAll('.endpoint-list li').forEach(el => {
+                el.classList.remove('active');
+            });
+            
+            // Show selected endpoint
+            document.getElementById(endpoint + 'Endpoint').classList.add('active');
+            
+            // Add active class to clicked list item
+            event.target.classList.add('active');
+        }
+        
+        // Copy API Key
+        function copyApiKey() {
+            const apiKeyInput = document.getElementById('apiKey');
+            apiKeyInput.select();
+            document.execCommand('copy');
+            alert('API Key copied to clipboard!');
+        }
+        
+        // Show loading state
+        function showLoading(buttonId) {
+            const button = document.getElementById(buttonId);
+            const originalText = button.innerHTML;
+            button.innerHTML = '<span class="loading"></span> Loading...';
+            button.disabled = true;
+            return originalText;
+        }
+        
+        // Hide loading state
+        function hideLoading(buttonId, originalText) {
+            const button = document.getElementById(buttonId);
+            button.innerHTML = originalText;
+            button.disabled = false;
+        }
+        
+        // Display result
+        function displayResult(elementId, data) {
+            const element = document.getElementById(elementId);
+            if (typeof data === 'object') {
+                element.innerHTML = '<pre>' + JSON.stringify(data, null, 2) + '</pre>';
+            } else {
+                element.innerHTML = data;
+            }
+        }
+        
+        // Check API Status
+        async function checkStatus() {
+            const originalText = showLoading('statusBtn');
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/status?apikey=${currentApiKey}`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    displayResult('statusResult', data);
+                    
+                    // Update usage stats
+                    if (data.data) {
+                        document.getElementById('tierStat').textContent = data.data.tier || 'Free';
+                        document.getElementById('requestsStat').textContent = data.data.monthlyRequests || 0;
+                        document.getElementById('remainingStat').textContent = data.data.remainingRequests || 30000;
+                        
+                        if (data.data.resetDate) {
+                            const resetDate = new Date(data.data.resetDate);
+                            document.getElementById('resetStat').textContent = resetDate.toLocaleDateString();
+                        }
+                    }
+                } else {
+                    displayResult('statusResult', data);
+                }
+            } catch (error) {
+                displayResult('statusResult', { error: 'Failed to connect to API', details: error.message });
+            } finally {
+                hideLoading('statusBtn', originalText);
+            }
+        }
+        
+        // Search Videos
+        async function searchVideos() {
+            const query = document.getElementById('searchQuery').value.trim();
+            if (!query) {
+                alert('Please enter a search query');
+                return;
+            }
+            
+            const originalText = showLoading('searchBtn');
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/search?apikey=${currentApiKey}&query=${encodeURIComponent(query)}`);
+                const data = await response.json();
+                displayResult('searchResult', data);
+            } catch (error) {
+                displayResult('searchResult', { error: 'Failed to search videos', details: error.message });
+            } finally {
+                hideLoading('searchBtn', originalText);
+            }
+        }
+        
+        // Get Video Info
+        async function getVideoInfo() {
+            const url = document.getElementById('infoUrl').value.trim();
+            if (!url) {
+                alert('Please enter a YouTube URL');
+                return;
+            }
+            
+            const originalText = showLoading('infoBtn');
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/info?apikey=${currentApiKey}&url=${encodeURIComponent(url)}`);
+                const data = await response.json();
+                displayResult('infoResult', data);
+            } catch (error) {
+                displayResult('infoResult', { error: 'Failed to get video info', details: error.message });
+            } finally {
+                hideLoading('infoBtn', originalText);
+            }
+        }
+        
+        // Download MP3
+        function downloadMP3() {
+            const url = document.getElementById('mp3Url').value.trim();
+            const quality = document.getElementById('mp3Quality').value;
+            
+            if (!url) {
+                alert('Please enter a YouTube URL');
+                return;
+            }
+            
+            const originalText = showLoading('mp3Btn');
+            
+            // Create download link
+            const downloadUrl = `${API_BASE_URL}/download/mp3?apikey=${currentApiKey}&url=${encodeURIComponent(url)}&quality=${quality}`;
+            
+            // Create temporary anchor element
+            const a = document.createElement('a');
+            a.href = downloadUrl;
+            a.download = 'download.mp3';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            
+            displayResult('mp3Result', {
+                message: 'MP3 download started...',
+                url: downloadUrl
+            });
+            
+            hideLoading('mp3Btn', originalText);
+        }
+        
+        // Download MP4
+        function downloadMP4() {
+            const url = document.getElementById('mp4Url').value.trim();
+            const quality = document.getElementById('mp4Quality').value;
+            
+            if (!url) {
+                alert('Please enter a YouTube URL');
+                return;
+            }
+            
+            const originalText = showLoading('mp4Btn');
+            
+            // Create download link
+            const downloadUrl = `${API_BASE_URL}/download/mp4?apikey=${currentApiKey}&url=${encodeURIComponent(url)}&quality=${quality}`;
+            
+            // Create temporary anchor element
+            const a = document.createElement('a');
+            a.href = downloadUrl;
+            a.download = 'download.mp4';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            
+            displayResult('mp4Result', {
+                message: 'MP4 download started...',
+                url: downloadUrl
+            });
+            
+            hideLoading('mp4Btn', originalText);
+        }
+    </script>
+</body>
+</html>
