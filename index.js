@@ -66,7 +66,7 @@ async function ytSearch(query) {
     });
 }
 
-// Your original search endpoint
+// Your original search endpoint - THE ONLY WORKING ONE
 app.get('/', async (req, res) => {
     const query = req.query.q || req.query.query; 
     if (!query) {
@@ -88,7 +88,7 @@ app.get('/', async (req, res) => {
     }
 });
 
-// Enhanced search with external download services
+// Enhanced search that provides external download service links
 app.get('/search', async (req, res) => {
     const query = req.query.q || req.query.query; 
     if (!query) {
@@ -101,42 +101,36 @@ app.get('/search', async (req, res) => {
     try {
         const results = await ytSearch(query);
         
-        // Add external download services to each video
-        const videosWithExternalServices = results.videos.map(video => {
-            if (video.type === 'video' && video.id) {
-                const encodedVideoUrl = encodeURIComponent(video.url);
-                const encodedVideoTitle = encodeURIComponent(video.name);
-                
+        // Filter only videos and add external service URLs
+        const videosWithExternalServices = results.videos
+            .filter(video => video.type === 'video' && video.id)
+            .map(video => {
                 return {
                     ...video,
-                    external_download_services: {
-                        // Free YouTube to MP3 converters
-                        y2mate: `https://www.y2mate.com/youtube/${video.id}`,
-                        ytmp3: `https://ytmp3.cc/en13/?v=${video.id}`,
-                        flvto: `https://www.flvto.biz/download/${video.id}/youtube-to-mp3`,
+                    // Provide links to external services (not our own endpoints)
+                    external_services: {
+                        // Watch/Stream
+                        youtube_watch: video.url,
+                        youtube_embed: `https://www.youtube.com/embed/${video.id}`,
                         
-                        // YouTube downloader sites
-                        savetube: `https://savetube.co/${video.id}`,
-                        yt5s: `https://en.yt5s.com/youtube-to-mp3/${video.id}`,
+                        // External converters (user will need to copy URL to these sites)
+                        convert_instructions: `Copy this URL and paste into any YouTube downloader website: ${video.url}`,
                         
-                        // Direct links for apps/scripts
-                        dl_links: {
-                            audio: `https://www.youtube.com/watch?v=${video.id}`,
-                            video: `https://www.youtube.com/watch?v=${video.id}`,
-                            thumbnail: `https://img.youtube.com/vi/${video.id}/maxresdefault.jpg`
-                        },
-                        
-                        // Quick download instructions
-                        instructions: "Copy the YouTube URL and paste it into any YouTube downloader website like y2mate, ytmp3.cc, etc."
+                        // Recommended external sites
+                        recommended_sites: [
+                            'y2mate.com',
+                            'ytmp3.cc', 
+                            'savetube.co',
+                            'flvto.biz'
+                        ]
                     }
                 };
-            }
-            return video;
-        });
+            });
         
         res.json({ 
             success: true,
             query: query,
+            count: videosWithExternalServices.length,
             videos: videosWithExternalServices 
         });
         
@@ -149,7 +143,7 @@ app.get('/search', async (req, res) => {
     }
 });
 
-// Get detailed information about a specific video
+// Simple video info endpoint
 app.get('/info', async (req, res) => {
     const url = req.query.url || req.query.video;
     
@@ -180,56 +174,15 @@ app.get('/info', async (req, res) => {
             });
         }
         
-        const encodedVideoUrl = encodeURIComponent(video.url);
-        
         res.json({
             success: true,
-            data: {
-                id: video.id,
-                title: video.name,
-                author: video.author,
-                description: video.description,
-                duration: video.duration,
-                duration_seconds: video.duration_seconds,
-                views: video.views,
-                published: video.published,
-                thumbnail: video.thumbnail,
-                url: video.url,
-                
-                // External services for downloading
-                external_download_links: {
-                    // MP3 converters
-                    y2mate_mp3: `https://www.y2mate.com/youtube-mp3/${video.id}`,
-                    ytmp3_mp3: `https://ytmp3.cc/en13/?v=${video.id}`,
-                    
-                    // Video downloaders
-                    y2mate_video: `https://www.y2mate.com/youtube/${video.id}`,
-                    savetube_video: `https://savetube.co/${video.id}`,
-                    
-                    // Other formats
-                    flvto: `https://www.flvto.biz/download/${video.id}/youtube-to-mp3`,
-                    convert2mp3: `https://www.convert2mp3.net/index.php?p=convert&url=${encodedVideoUrl}`,
-                    
-                    // Browser extensions suggestion
-                    browser_extensions: [
-                        "Video DownloadHelper (Firefox/Chrome)",
-                        "YouTube Video Downloader (Chrome)",
-                        "4K Video Downloader (Desktop App)"
-                    ]
-                },
-                
-                // Direct API alternatives (for developers)
-                api_alternatives: {
-                    rapidapi: "Use RapidAPI YouTube Downloader APIs",
-                    scraperapi: "Use web scraping services",
-                    puppeteer: "Use Puppeteer for browser automation"
-                },
-                
-                instructions: {
-                    web: "Copy the video URL and paste it into any YouTube downloader website",
-                    mobile: "Use YouTube downloader apps like Snaptube, Videoder, etc.",
-                    desktop: "Use 4K Video Downloader, YTD Video Downloader, etc."
-                }
+            video: video,
+            external_links: {
+                watch: video.url,
+                embed: `https://www.youtube.com/embed/${video.id}`,
+                thumbnail: `https://img.youtube.com/vi/${video.id}/maxresdefault.jpg`,
+                // Note: We cannot provide direct download links due to YouTube restrictions
+                download_suggestion: "Use external YouTube downloader websites or apps"
             }
         });
         
@@ -242,10 +195,9 @@ app.get('/info', async (req, res) => {
     }
 });
 
-// Smart endpoint for search + external download links
+// Clean get endpoint - only provides search functionality
 app.get('/get', async (req, res) => {
     const query = req.query.q || req.query.query || req.query.url;
-    const format = req.query.format || 'search'; // 'search', 'info', 'mp3', 'mp4'
     
     if (!query) {
         return res.status(400).json({ 
@@ -255,71 +207,28 @@ app.get('/get', async (req, res) => {
     }
 
     try {
-        // Check if it's a direct URL
-        const videoId = extractVideoId(query);
-        
-        if (videoId && format !== 'search') {
-            // It's a direct URL, get info with external download links
-            const url = query.startsWith('http') ? query : `https://www.youtube.com/watch?v=${videoId}`;
-            
-            // Search for this specific video
-            const results = await ytSearch(videoId);
-            const video = results.videos.find(v => v.id === videoId);
-            
-            if (!video) {
-                return res.status(404).json({ 
-                    success: false, 
-                    error: 'Video not found' 
-                });
-            }
-            
-            const encodedVideoUrl = encodeURIComponent(video.url);
-            
-            // Return different formats based on request
-            if (format === 'info') {
-                return res.json({
-                    success: true,
-                    type: 'video_info',
-                    video: video,
-                    external_download: {
-                        mp3: `https://www.y2mate.com/youtube-mp3/${video.id}`,
-                        mp4: `https://www.y2mate.com/youtube/${video.id}`,
-                        web_player: `https://www.youtube.com/embed/${video.id}`
-                    }
-                });
-            } else if (format === 'mp3') {
-                // Redirect to external MP3 converter
-                return res.redirect(`https://www.y2mate.com/youtube-mp3/${video.id}`);
-            } else if (format === 'mp4') {
-                // Redirect to external video downloader
-                return res.redirect(`https://www.y2mate.com/youtube/${video.id}`);
-            }
-        }
-        
-        // Perform a regular search
         const results = await ytSearch(query);
         
-        // Add external download services to search results
-        const videosWithServices = results.videos.map(video => {
-            if (video.type === 'video' && video.id) {
-                return {
-                    ...video,
-                    quick_download: `/get?q=${video.url}&format=info`,
-                    external_links: {
-                        mp3: `https://www.y2mate.com/youtube-mp3/${video.id}`,
-                        mp4: `https://www.y2mate.com/youtube/${video.id}`
-                    }
-                };
-            }
-            return video;
-        });
+        // Clean response without broken download URLs
+        const cleanVideos = results.videos.map(video => ({
+            type: video.type,
+            id: video.id,
+            name: video.name,
+            description: video.description,
+            url: video.url,
+            views: video.views,
+            published: video.published,
+            author: video.author,
+            duration: video.duration,
+            thumbnail: video.thumbnail,
+            isLive: video.isLive
+        }));
         
         res.json({ 
             success: true,
             query: query,
-            type: 'search_results',
-            count: videosWithServices.length,
-            videos: videosWithServices 
+            count: cleanVideos.length,
+            videos: cleanVideos 
         });
         
     } catch (error) {
@@ -331,37 +240,29 @@ app.get('/get', async (req, res) => {
     }
 });
 
-// Health check and API documentation
+// Health check and documentation
 app.get('/health', (req, res) => {
     res.json({ 
         success: true,
         status: 'OK',
         timestamp: new Date().toISOString(),
-        version: '2.0.0',
-        note: 'Using external download services due to YouTube restrictions',
-        endpoints: {
-            search: 'GET /?q=query - Original search endpoint',
-            enhanced_search: 'GET /search?q=query - Search with external download links',
-            video_info: 'GET /info?url=youtube_url - Video info with download options',
-            smart_search: 'GET /get?q=query_or_url&format=search|info|mp3|mp4'
+        service: 'YouTube Search API',
+        working_endpoints: {
+            search: 'GET /?q=query - Search YouTube videos',
+            enhanced_search: 'GET /search?q=query - Search with external service info',
+            video_info: 'GET /info?url=youtube_url - Get video information',
+            clean_search: 'GET /get?q=query - Clean search results'
         },
         example_queries: {
-            search: '/?q=coldplay yellow',
-            search_with_downloads: '/search?q=coldplay yellow',
-            video_info: '/info?url=https://youtube.com/watch?v=VIDEO_ID',
-            quick_download: '/get?q=https://youtube.com/watch?v=VIDEO_ID&format=mp3'
+            search: '/?q=wangi nyaka anyombi',
+            search_with_params: '/?query=wangi nyaka anyombi',
+            url_search: '/?q=https://youtube.com/watch?v=div2DHOFvR8'
         },
-        recommended_external_services: [
-            'y2mate.com',
-            'ytmp3.cc',
-            'savetube.co',
-            'flvto.biz'
-        ],
-        disclaimer: 'This API only provides search functionality. For downloading, use the provided external service links.'
+        note: 'This API only provides search functionality. For downloading, use external YouTube downloader services.'
     });
 });
 
-// Batch search endpoint
+// Batch search for multiple queries
 app.get('/batch', async (req, res) => {
     const queries = req.query.q ? req.query.q.split(',') : [];
     
@@ -372,37 +273,36 @@ app.get('/batch', async (req, res) => {
         });
     }
     
-    if (queries.length > 10) {
+    if (queries.length > 5) {
         return res.status(400).json({ 
             success: false, 
-            error: 'Maximum 10 queries allowed' 
+            error: 'Maximum 5 queries allowed' 
         });
     }
     
     try {
-        const results = await Promise.all(
-            queries.map(async (query, index) => {
-                try {
-                    const searchResults = await ytSearch(query.trim());
-                    return {
-                        query: query.trim(),
-                        success: true,
-                        results: searchResults.videos.slice(0, 3) // Return top 3 results
-                    };
-                } catch (error) {
-                    return {
-                        query: query.trim(),
-                        success: false,
-                        error: error.message
-                    };
-                }
-            })
+        const searchPromises = queries.map(query => 
+            ytSearch(query.trim()).catch(error => ({
+                query: query.trim(),
+                success: false,
+                error: error.message,
+                videos: []
+            }))
         );
+        
+        const results = await Promise.all(searchPromises);
+        
+        const formattedResults = results.map((result, index) => ({
+            query: queries[index].trim(),
+            success: !result.error,
+            count: result.videos ? result.videos.length : 0,
+            videos: result.videos ? result.videos.slice(0, 3) : [] // Top 3 results
+        }));
         
         res.json({
             success: true,
             count: queries.length,
-            results: results
+            results: formattedResults
         });
         
     } catch (error) {
@@ -414,48 +314,48 @@ app.get('/batch', async (req, res) => {
     }
 });
 
-// Auto-complete/suggestions endpoint
+// Suggestions/autocomplete endpoint
 app.get('/suggest', async (req, res) => {
     const query = req.query.q || req.query.query; 
     
     if (!query || query.length < 2) {
         return res.json({ 
             success: true,
+            query: query || '',
             suggestions: []
         });
     }
 
     try {
-        // Use yt-search to get suggestions
+        // Get search results and use titles as suggestions
         const results = await ytSearch(query);
         
-        // Extract unique video titles and authors as suggestions
-        const suggestions = results.videos.slice(0, 10).map(video => ({
-            text: video.name,
-            type: video.type,
-            author: video.author,
-            id: video.id
-        }));
+        // Extract unique titles (limited to 10)
+        const seenTitles = new Set();
+        const suggestions = [];
         
-        // Add query-based suggestions
-        const querySuggestions = [
-            `${query} music`,
-            `${query} official video`,
-            `${query} lyrics`,
-            `${query} full album`,
-            `${query} live`
-        ].map(text => ({ text, type: 'suggestion' }));
+        for (const video of results.videos) {
+            if (video.name && !seenTitles.has(video.name) && suggestions.length < 10) {
+                seenTitles.add(video.name);
+                suggestions.push({
+                    text: video.name,
+                    type: video.type,
+                    id: video.id
+                });
+            }
+        }
         
         res.json({ 
             success: true,
             query: query,
-            suggestions: [...suggestions, ...querySuggestions]
+            suggestions: suggestions
         });
         
     } catch (error) {
         console.error('Error getting suggestions:', error);
         res.json({ 
             success: true,
+            query: query,
             suggestions: []
         });
     }
@@ -463,10 +363,10 @@ app.get('/suggest', async (req, res) => {
 
 // Start server
 app.listen(port, () => {
-    console.log(`🚀 Server is running on port: ${port}`);
-    console.log(`🔗 Search: http://localhost:${port}/?q=query`);
-    console.log(`🔗 Search with downloads: http://localhost:${port}/search?q=query`);
-    console.log(`🔗 Video info: http://localhost:${port}/info?url=youtube_url`);
-    console.log(`🔗 Smart search: http://localhost:${port}/get?q=query_or_url&format=mp3`);
-    console.log(`📝 Note: Due to YouTube restrictions, download links point to external services`);
+    console.log(`✅ Server is running on port: ${port}`);
+    console.log(`🔗 Main endpoint: http://localhost:${port}/?q=your_query`);
+    console.log(`🔗 Example: http://localhost:${port}/?q=wangi nyaka anyombi`);
+    console.log(`🔗 Health check: http://localhost:${port}/health`);
+    console.log(`📝 Service: YouTube Search API (Search only)`);
+    console.log(`⚠️  Note: Download functionality not available due to YouTube restrictions`);
 });
